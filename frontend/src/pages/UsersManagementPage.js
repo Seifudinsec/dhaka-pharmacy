@@ -4,6 +4,8 @@ import { faUserPlus, faEdit, faTrash, faSearch, faKey, faUserShield, faUserClock
 import AppIcon from '../components/common/AppIcon';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
+import useDebounce from '../hooks/useDebounce';
+import { faCheckCircle, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
 
 const UsersManagementPage = () => {
   const [users, setUsers] = useState([]);
@@ -13,16 +15,38 @@ const UsersManagementPage = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
-  const [formData, setFormData] = useState({
-    username: '',
-    password: '',
-    role: 'pharmacist',
-    notificationPreferences: {
-      lowStock: true,
-      expiry: true,
-      dailySales: false
     }
   });
+  
+  const [usernameStatus, setUsernameStatus] = useState({ loading: false, exists: false, checked: false });
+  const debouncedUsername = useDebounce(formData.username, 400);
+
+  useEffect(() => {
+    const checkUsername = async () => {
+      if (!debouncedUsername || debouncedUsername.trim().length < 3) {
+        setUsernameStatus({ loading: false, exists: false, checked: false });
+        return;
+      }
+      
+      // If we are editing, don't check if it's the current username
+      if (selectedUser && debouncedUsername.toLowerCase() === selectedUser.username.toLowerCase()) {
+        setUsernameStatus({ loading: false, exists: false, checked: true });
+        return;
+      }
+
+      setUsernameStatus(prev => ({ ...prev, loading: true }));
+      try {
+        const { data } = await api.get(`/users/check/${debouncedUsername}`);
+        setUsernameStatus({ loading: false, exists: data.exists, checked: true });
+      } catch {
+        setUsernameStatus(prev => ({ ...prev, loading: false }));
+      }
+    };
+    
+    if (showAddModal || showEditModal) {
+      checkUsername();
+    }
+  }, [debouncedUsername, showAddModal, showEditModal, selectedUser]);
 
   useEffect(() => {
     fetchUsers();
@@ -112,7 +136,7 @@ const UsersManagementPage = () => {
       }
     } catch (error) {
       console.error('Error toggling user status:', error);
-      toast.error('Failed to update user status');
+      toast.error(error.response?.data?.message || 'Failed to update user status');
     }
   };
 
@@ -128,7 +152,7 @@ const UsersManagementPage = () => {
       }
     } catch (error) {
       console.error('Error deleting user:', error);
-      toast.error('Failed to delete user');
+      toast.error(error.response?.data?.message || 'Failed to delete user');
     }
   };
 
@@ -298,6 +322,19 @@ const UsersManagementPage = () => {
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   className="form-input"
                 />
+                {usernameStatus.checked && formData.username.length >= 3 && (
+                  <div className={`input-feedback ${usernameStatus.exists ? 'error' : 'success'}`} style={{ 
+                    fontSize: '11px', 
+                    marginTop: '4px', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '4px',
+                    color: usernameStatus.exists ? 'var(--red-600)' : 'var(--green-600)'
+                  }}>
+                    <AppIcon icon={usernameStatus.exists ? faCircleXmark : faCheckCircle} size="xs" />
+                    {usernameStatus.exists ? 'Username already taken' : 'Username available'}
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label htmlFor="add-password">Password</label>
@@ -373,7 +410,7 @@ const UsersManagementPage = () => {
                 <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={usernameStatus.exists || formData.username.length < 3}>
                   Add User
                 </button>
               </div>
@@ -401,6 +438,19 @@ const UsersManagementPage = () => {
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   className="form-input"
                 />
+                {usernameStatus.checked && formData.username.length >= 3 && (
+                  <div className={`input-feedback ${usernameStatus.exists ? 'error' : 'success'}`} style={{ 
+                    fontSize: '11px', 
+                    marginTop: '4px', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '4px',
+                    color: usernameStatus.exists ? 'var(--red-600)' : 'var(--green-600)'
+                  }}>
+                    <AppIcon icon={usernameStatus.exists ? faCircleXmark : faCheckCircle} size="xs" />
+                    {usernameStatus.exists ? 'Username already taken' : 'Username available'}
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label htmlFor="edit-role">Role</label>
@@ -465,7 +515,7 @@ const UsersManagementPage = () => {
                 <button type="button" className="btn btn-secondary" onClick={() => setShowEditModal(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={usernameStatus.exists || formData.username.length < 3}>
                   Update User
                 </button>
               </div>

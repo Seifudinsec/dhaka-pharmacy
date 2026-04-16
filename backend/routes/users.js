@@ -18,6 +18,17 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/users/check/:username
+router.get('/check/:username', async (req, res) => {
+  try {
+    const username = String(req.params.username).trim().toLowerCase();
+    const user = await User.findOne({ username });
+    res.json({ success: true, exists: !!user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Check error' });
+  }
+});
+
 // POST /api/users
 router.post('/', auditLog('USER_CREATED', 'User'), async (req, res) => {
   try {

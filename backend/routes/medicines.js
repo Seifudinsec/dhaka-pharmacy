@@ -58,6 +58,17 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/medicines/check/:name
+router.get('/check/:name', async (req, res) => {
+  try {
+    const name = String(req.params.name).trim();
+    const medicine = await Medicine.findOne({ name: { $regex: `^${name}$`, $options: 'i' } });
+    res.json({ success: true, exists: !!medicine });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Check error' });
+  }
+});
+
 // GET /api/medicines/:id
 router.get('/:id', async (req, res) => {
   try {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { faArrowsRotate, faFloppyDisk, faPenToSquare, faPills, faPlus, faPowerOff, faTrashCan, faXmark, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons';
+import { faArrowsRotate, faFloppyDisk, faPenToSquare, faPills, faPlus, faPowerOff, faTrashCan, faXmark, faMagnifyingGlass, faCheckCircle, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
 import api from '../utils/api';
 import { format } from 'date-fns';
 import AppIcon from '../components/common/AppIcon';
@@ -24,10 +24,36 @@ const MedicineModal = ({ medicine, onClose, onSaved }) => {
   );
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  const [nameStatus, setNameStatus] = useState({ loading: false, exists: false, checked: false });
+  const debouncedName = useDebounce(form.name, 400);
+
+  useEffect(() => {
+    const checkName = async () => {
+      const q = debouncedName.trim();
+      if (!q || q.length < 2) {
+        setNameStatus({ loading: false, exists: false, checked: false });
+        return;
+      }
+      // Skip check if editing and name hasn't changed
+      if (medicine && q.toLowerCase() === medicine.name.toLowerCase()) {
+        setNameStatus({ loading: false, exists: false, checked: true });
+        return;
+      }
+      setNameStatus(prev => ({ ...prev, loading: true }));
+      try {
+        const { data } = await api.get(`/medicines/check/${encodeURIComponent(q)}`);
+        setNameStatus({ loading: false, exists: data.exists, checked: true });
+      } catch {
+        setNameStatus(prev => ({ ...prev, loading: false }));
+      }
+    };
+    checkName();
+  }, [debouncedName, medicine]);
 
   const validate = () => {
     const e = {};
     if (!form.name.trim()) e.name = 'Name is required.';
+    if (nameStatus.exists) e.name = 'Medicine name already exists.';
     if (!form.batchNumber.trim()) e.batchNumber = 'Batch number is required.';
     if (!form.price || isNaN(form.price) || Number(form.price) <= 0) e.price = 'Price must be greater than 0.';
     if (!form.buyingPrice || isNaN(form.buyingPrice) || Number(form.buyingPrice) <= 0) e.buyingPrice = 'Buying price must be greater than 0.';
@@ -82,6 +108,19 @@ const MedicineModal = ({ medicine, onClose, onSaved }) => {
             <div className="form-group">
               <label htmlFor="modal-name" className="form-label">Name <span className="required">*</span></label>
               <input id="modal-name" className={`form-control${errors.name ? ' error' : ''}`} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Paracetamol 500mg" />
+              {nameStatus.checked && form.name.trim().length >= 2 && (
+                <div className={`input-feedback ${nameStatus.exists ? 'error' : 'success'}`} style={{ 
+                  fontSize: '11px', 
+                  marginTop: '4px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '4px',
+                  color: nameStatus.exists ? 'var(--red-600)' : 'var(--green-600)'
+                }}>
+                  <AppIcon icon={nameStatus.exists ? faCircleXmark : faCheckCircle} size="xs" />
+                  {nameStatus.exists ? 'Medicine already exists' : 'Medicine name available'}
+                </div>
+              )}
               {errors.name && <div className="form-error">{errors.name}</div>}
             </div>
             <div className="form-group">
@@ -114,7 +153,7 @@ const MedicineModal = ({ medicine, onClose, onSaved }) => {
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
+            <button type="submit" className="btn btn-primary" disabled={saving || nameStatus.exists}>
               {saving ? <><span className="spinner spinner-sm" /> Saving...</> : <><AppIcon icon={faFloppyDisk} /> Save</>}
             </button>
           </div>
@@ -180,6 +219,7 @@ export default function MedicinesPage() {
   const [modal, setModal] = useState(null); // { type: 'add'|'edit'|'deactivate'|'reactivate', medicine? }
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkDeactivating, setBulkDeactivating] = useState(false);
+  const [nameStatus, setNameStatus] = useState({ loading: false, exists: false, checked: false });
   const searchRef = useRef();
 
   // Debounce search term to prevent flickering/glitches
