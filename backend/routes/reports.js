@@ -1,9 +1,10 @@
-const express = require('express');
-const { protect, adminOnly } = require('../middleware/auth');
-const Sale = require('../models/Sale');
-const Medicine = require('../models/Medicine');
-const Return = require('../models/Return');
-const XLSX = require('xlsx');
+const express = require("express");
+const { format } = require("date-fns");
+const { protect, adminOnly } = require("../middleware/auth");
+const Sale = require("../models/Sale");
+const Medicine = require("../models/Medicine");
+const Return = require("../models/Return");
+const XLSX = require("xlsx");
 const router = express.Router();
 
 // Apply authentication and admin-only middleware to all routes
@@ -11,17 +12,22 @@ router.use(protect);
 router.use(adminOnly);
 
 // Get analytics data for reports
-router.get('/analytics', async (req, res) => {
+router.get("/analytics", async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    const start = new Date(startDate || new Date().setDate(new Date().getDate() - 30));
+    const start = new Date(
+      startDate || new Date().setDate(new Date().getDate() - 30),
+    );
     const end = new Date(endDate || new Date());
     end.setHours(23, 59, 59, 999);
 
     // Get sales AND returns for the period
     const [sales, returns] = await Promise.all([
-      Sale.find({ createdAt: { $gte: start, $lte: end } }).populate('servedBy', 'username'),
-      Return.find({ createdAt: { $gte: start, $lte: end } })
+      Sale.find({ createdAt: { $gte: start, $lte: end } }).populate(
+        "servedBy",
+        "username",
+      ),
+      Return.find({ createdAt: { $gte: start, $lte: end } }),
     ]);
 
     const dailyRevenue = [];
@@ -37,14 +43,22 @@ router.get('/analytics', async (req, res) => {
 
     // Daily buckets
     for (const date of dateRange) {
-      const dStart = new Date(date).setHours(0,0,0,0);
-      const dEnd = new Date(date).setHours(23,59,59,999);
+      const dStart = new Date(date).setHours(0, 0, 0, 0);
+      const dEnd = new Date(date).setHours(23, 59, 59, 999);
 
-      const dSales = sales.filter(s => s.createdAt >= dStart && s.createdAt <= dEnd);
-      const dReturns = returns.filter(r => r.createdAt >= dStart && r.createdAt <= dEnd);
+      const dSales = sales.filter(
+        (s) => s.createdAt >= dStart && s.createdAt <= dEnd,
+      );
+      const dReturns = returns.filter(
+        (r) => r.createdAt >= dStart && r.createdAt <= dEnd,
+      );
 
-      const revenue = dSales.reduce((sum, s) => sum + s.total, 0) - dReturns.reduce((sum, r) => sum + r.totalRefund, 0);
-      const profit = dSales.reduce((sum, s) => sum + (s.profit || 0), 0) - dReturns.reduce((sum, r) => sum + r.totalProfitLoss, 0);
+      const revenue =
+        dSales.reduce((sum, s) => sum + s.total, 0) -
+        dReturns.reduce((sum, r) => sum + r.totalRefund, 0);
+      const profit =
+        dSales.reduce((sum, s) => sum + (s.totalProfit || 0), 0) -
+        dReturns.reduce((sum, r) => sum + r.totalProfitLoss, 0);
 
       dailyRevenue.push(Number(revenue.toFixed(2)));
       dailyProfit.push(Number(profit.toFixed(2)));
@@ -54,33 +68,42 @@ router.get('/analytics', async (req, res) => {
     // Weekly/Monthly aggregation logic
     const weeklyRevenue = [];
     const monthlyRevenue = [];
-    
+
     // Simple 7-day chunking for weekly trend
     for (let i = 0; i < dailyRevenue.length; i += 7) {
-      weeklyRevenue.push(dailyRevenue.slice(i, i + 7).reduce((a, b) => a + b, 0));
+      weeklyRevenue.push(
+        dailyRevenue.slice(i, i + 7).reduce((a, b) => a + b, 0),
+      );
     }
-    
+
     // Simple 30-day chunking for monthly trend
     for (let i = 0; i < dailyRevenue.length; i += 30) {
-      monthlyRevenue.push(dailyRevenue.slice(i, i + 30).reduce((a, b) => a + b, 0));
+      monthlyRevenue.push(
+        dailyRevenue.slice(i, i + 30).reduce((a, b) => a + b, 0),
+      );
     }
 
     const medicineSales = {};
-    sales.forEach(sale => {
-      sale.items.forEach(item => {
+    sales.forEach((sale) => {
+      sale.items.forEach((item) => {
         const medName = item.medicineName;
         if (!medicineSales[medName]) {
-          medicineSales[medName] = { name: medName, unitsSold: 0, revenue: 0, profit: 0 };
+          medicineSales[medName] = {
+            name: medName,
+            unitsSold: 0,
+            revenue: 0,
+            profit: 0,
+          };
         }
         medicineSales[medName].unitsSold += item.quantity;
-        medicineSales[medName].revenue += item.total;
-        medicineSales[medName].profit += (item.profit || 0);
+        medicineSales[medName].revenue += item.subtotal;
+        medicineSales[medName].profit += item.profit || 0;
       });
     });
 
     // Subtract quantities from returns in the medicine sales list
-    returns.forEach(ret => {
-      ret.items.forEach(item => {
+    returns.forEach((ret) => {
+      ret.items.forEach((item) => {
         const medName = item.medicineName;
         if (medicineSales[medName]) {
           medicineSales[medName].unitsSold -= item.quantity;
@@ -93,13 +116,13 @@ router.get('/analytics', async (req, res) => {
     const topMedicines = Object.values(medicineSales)
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10)
-      .map(med => ({
+      .map((med) => ({
         ...med,
-        profitMargin: med.revenue > 0 ? (med.profit / med.revenue) * 100 : 0
+        profitMargin: med.revenue > 0 ? (med.profit / med.revenue) * 100 : 0,
       }));
 
     const lowPerformingMedicines = Object.values(medicineSales)
-      .filter(med => med.unitsSold < 10) // Changed from 5 to 10 for better tracking
+      .filter((med) => med.unitsSold < 10) // Changed from 5 to 10 for better tracking
       .sort((a, b) => a.unitsSold - b.unitsSold)
       .slice(0, 10);
 
@@ -108,36 +131,59 @@ router.get('/analytics', async (req, res) => {
       if (medicine) {
         med.stockStatus = medicine.stockStatus;
         med.lastSale = sales
-          .filter(sale => sale.items.some(item => item.medicineName === med.name))
-          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]?.createdAt;
+          .filter((sale) =>
+            sale.items.some((item) => item.medicineName === med.name),
+          )
+          .sort(
+            (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+          )[0]?.createdAt;
       }
     }
 
     const totalSalesRevenue = sales.reduce((sum, s) => sum + s.total, 0);
-    const totalReturnRefunds = returns.reduce((sum, r) => sum + r.totalRefund, 0);
+    const totalReturnRefunds = returns.reduce(
+      (sum, r) => sum + r.totalRefund,
+      0,
+    );
     const totalRevenue = totalSalesRevenue - totalReturnRefunds;
 
-    const totalSalesProfit = sales.reduce((sum, s) => sum + (s.profit || 0), 0);
-    const totalReturnProfitLoss = returns.reduce((sum, r) => sum + r.totalProfitLoss, 0);
+    const totalSalesProfit = sales.reduce(
+      (sum, s) => sum + (s.totalProfit || 0),
+      0,
+    );
+    const totalReturnProfitLoss = returns.reduce(
+      (sum, r) => sum + r.totalProfitLoss,
+      0,
+    );
     const totalProfit = totalSalesProfit - totalReturnProfitLoss;
 
     const totalSales = sales.length;
     const averageSaleValue = totalSales > 0 ? totalRevenue / totalSales : 0;
-    const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+    const profitMargin =
+      totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
     // Growth Rate
     const periodDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-    const prevStart = new Date(start); prevStart.setDate(prevStart.getDate() - periodDays);
-    const prevEnd = new Date(start); prevEnd.setSeconds(prevEnd.getSeconds() - 1);
+    const prevStart = new Date(start);
+    prevStart.setDate(prevStart.getDate() - periodDays);
+    const prevEnd = new Date(start);
+    prevEnd.setSeconds(prevEnd.getSeconds() - 1);
 
-    const prevSales = await Sale.find({ createdAt: { $gte: prevStart, $lte: prevEnd } });
+    const prevSales = await Sale.find({
+      createdAt: { $gte: prevStart, $lte: prevEnd },
+    });
     const prevRevenue = prevSales.reduce((sum, s) => sum + s.total, 0);
-    const growthRate = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
+    const growthRate =
+      prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
 
     res.json({
       success: true,
       data: {
-        revenue: { daily: dailyRevenue, weekly: weeklyRevenue, monthly: monthlyRevenue },
+        revenue: {
+          daily: dailyRevenue,
+          weekly: weeklyRevenue,
+          monthly: monthlyRevenue,
+        },
         profit: { daily: dailyProfit, weekly: [], monthly: [] },
         sales: { daily: dailySales, weekly: [], monthly: [] },
         topMedicines,
@@ -148,66 +194,98 @@ router.get('/analytics', async (req, res) => {
           totalSales,
           averageSaleValue: Number(averageSaleValue.toFixed(2)),
           profitMargin: Number(profitMargin.toFixed(2)),
-          growthRate: Number(growthRate.toFixed(2))
-        }
-      }
+          growthRate: Number(growthRate.toFixed(2)),
+        },
+      },
     });
   } catch (error) {
-    console.error('Reports analytics error:', error);
-    res.status(500).json({ success: false, message: 'Failed to generate analytics report' });
+    console.error("Reports analytics error:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to generate analytics report" });
   }
 });
 
 // Export reports (CSV/Excel)
-router.get('/export', async (req, res) => {
+router.get("/export", async (req, res) => {
   try {
-    const { startDate, endDate, format } = req.query;
+    const { startDate, endDate, format: exportFormat } = req.query;
     const start = new Date(startDate);
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
 
-    const sales = await Sale.find({ createdAt: { $gte: start, $lte: end } }).populate('servedBy', 'username');
+    const sales = await Sale.find({
+      createdAt: { $gte: start, $lte: end },
+    }).populate("servedBy", "username");
 
-    if (format === 'csv') {
-      const csvHeader = 'Date,Transaction ID,Items,Total,Profit,Served By,Status\n';
-      const csvData = sales.map(sale => {
-        const items = sale.items.map(item => `${item.medicineName}×${item.quantity}`).join('; ');
-        return `"${format(new Date(sale.createdAt), 'yyyy-MM-dd HH:mm')}",${sale._id},"${items}",${sale.total},${sale.profit || 0},"${sale.servedBy?.username || 'N/A'}",${sale.status || 'completed'}`;
-      }).join('\n');
+    if (exportFormat === "csv") {
+      const csvHeader =
+        "Date,Transaction ID,Items,Total,Profit,Served By,Status\n";
+      const csvData = sales
+        .map((sale) => {
+          const items = sale.items
+            .map((item) => `${item.medicineName}×${item.quantity}`)
+            .join("; ");
+          return `"${format(new Date(sale.createdAt), "yyyy-MM-dd HH:mm")}",${sale._id},"${items}",${sale.total},${sale.totalProfit || 0},"${sale.servedBy?.username || "N/A"}",${sale.status || "completed"}`;
+        })
+        .join("\n");
 
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="pharmacy-report-${startDate}-to-${endDate}.csv"`);
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="pharmacy-report-${startDate}-to-${endDate}.csv"`,
+      );
       res.send(csvHeader + csvData);
-    } else if (format === 'xlsx') {
-      const reportData = sales.map(sale => ({
+    } else if (exportFormat === "xlsx") {
+      const reportData = sales.map((sale) => ({
         Date: new Date(sale.createdAt).toLocaleString(),
-        'Transaction ID': sale._id.toString(),
-        Items: sale.items.map(i => `${i.medicineName} (x${i.quantity})`).join(', '),
-        'Total (KES)': sale.total,
-        'Profit (KES)': sale.profit || 0,
-        'Served By': sale.servedBy?.username || 'N/A',
-        Status: sale.status || 'completed'
+        "Transaction ID": sale._id.toString(),
+        Items: sale.items
+          .map((i) => `${i.medicineName} (x${i.quantity})`)
+          .join(", "),
+        "Total (KES)": sale.total,
+        "Profit (KES)": sale.totalProfit || 0,
+        "Served By": sale.servedBy?.username || "N/A",
+        Status: sale.status || "completed",
       }));
 
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.json_to_sheet(reportData);
-      
-      // Auto-size columns roughly
-      const wscols = [{ wch: 25 }, { wch: 25 }, { wch: 40 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
-      ws['!cols'] = wscols;
 
-      XLSX.utils.book_append_sheet(wb, ws, 'Sales Report');
-      
-      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="pharmacy-report-${startDate}-to-${endDate}.xlsx"`);
+      // Auto-size columns roughly
+      const wscols = [
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 40 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+      ];
+      ws["!cols"] = wscols;
+
+      XLSX.utils.book_append_sheet(wb, ws, "Sales Report");
+
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="pharmacy-report-${startDate}-to-${endDate}.xlsx"`,
+      );
       res.send(buf);
     } else {
-      res.status(400).json({ success: false, message: 'Unsupported export format' });
+      res
+        .status(400)
+        .json({ success: false, message: "Unsupported export format" });
     }
   } catch (error) {
-    console.error('Export error:', error);
-    res.status(500).json({ success: false, message: 'Failed to export report' });
+    console.error("Export error:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to export report" });
   }
 });
 
