@@ -115,14 +115,14 @@ const validateRow = (row, index, headerMapping) => {
   const errors = [];
   const rowNum = index + 2;
 
-  const name = String(getFirstValue(row, headerMapping.name)).trim();
-  const batchNumber = String(getFirstValue(row, headerMapping.batch)).trim() || 'UNTITLED';
-  const buyingPriceRaw = getFirstValue(row, headerMapping.buyingPrice);
-  const sellingPriceRaw = getFirstValue(row, headerMapping.sellingPrice);
+  const name = String(getFirstValue(row, [headerMapping.name, 'Product Name', 'product_name'])).trim();
+  const batchNumber = String(getFirstValue(row, [headerMapping.batch, 'Batch Number', 'batch_number'])).trim() || 'UNTITLED';
+  const buyingPriceRaw = getFirstValue(row, [headerMapping.buyingPrice, 'Buying Price', 'buying_price']);
+  const sellingPriceRaw = getFirstValue(row, [headerMapping.sellingPrice, 'Selling Price (KES)', 'selling_price_kes']);
   const buyingPrice = Number(buyingPriceRaw);
   const price = Number(sellingPriceRaw);
-  const stock = Number(getFirstValue(row, headerMapping.stock));
-  const expiryRaw = getFirstValue(row, headerMapping.expiry);
+  const stock = Number(getFirstValue(row, [headerMapping.stock, 'Quantity', 'quantity']));
+  const expiryRaw = getFirstValue(row, [headerMapping.expiry, 'Expiry Date', 'expiry_date']);
   const expiryDate = parseExcelDate(expiryRaw);
 
   if (!name) errors.push(`Row ${rowNum}: Name is missing`);
@@ -179,7 +179,7 @@ router.post('/', upload.single('file'), async (req, res) => {
       }
 
       // If we found at least Name and Stock/Quantity, it's probably the header row
-      if (mapping.name && mapping.stock) {
+      if (mapping.name || mapping.stock) {
         headerRowIndex = i;
         headerMapping = mapping;
         break;
