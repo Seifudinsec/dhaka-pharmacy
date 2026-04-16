@@ -233,7 +233,7 @@ body {
   flex-direction: column;
   position: fixed;
   top: 0; left: 0; bottom: 0;
-  z-index: var(--z-fixed);
+  z-index: 2000;
   transition: transform var(--transition-slower), box-shadow var(--transition);
   box-shadow: var(--shadow-sm);
 }
@@ -776,17 +776,24 @@ body {
 /* ===== Modern Modals ===== */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: var(--z-modal);
+  z-index: var(--z-modal-backdrop);
   padding: 20px;
+  animation: fadeIn var(--transition);
+}
+
+/* Specific overlay for mobile navigation */
+.nav-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(3px);
+  z-index: 1999;
   animation: fadeIn var(--transition);
 }
 .modal {
@@ -1194,13 +1201,7 @@ tbody tr:hover { background: var(--gray-50); }
 }
 [data-theme='dark'] .checkbox-label { color: #d6e0f0; }
 
-/* ===== Modal ===== */
-.modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 1000; padding: 16px;
-  animation: fadeIn 150ms ease;
-}
+/* Modals are handled by the consolidated .modal-overlay above */
 .modal {
   background: #fff; border-radius: 14px;
   box-shadow: var(--shadow-lg);
