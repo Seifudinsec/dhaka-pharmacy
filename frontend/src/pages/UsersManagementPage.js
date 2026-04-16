@@ -238,7 +238,8 @@ const UsersManagementPage = () => {
       </div>
 
       <div className="users-table-container">
-        <div className="table-wrap">
+        <div className="table-wrap table-responsive-cards">
+
           <table className="data-table">
             <thead>
             <tr>
@@ -254,7 +255,7 @@ const UsersManagementPage = () => {
           <tbody>
             {filteredUsers.map((user) => (
               <tr key={user._id}>
-                <td>
+                <td data-label="User">
                   <div className="user-cell">
                     <div className="user-avatar">{user.username[0].toUpperCase()}</div>
                     <div>
@@ -263,13 +264,13 @@ const UsersManagementPage = () => {
                     </div>
                   </div>
                 </td>
-                <td>
+                <td data-label="Role">
                   <span className={`role-badge ${user.role}`}>
                     <AppIcon icon={user.role === 'admin' ? faUserShield : faUserClock} />
                     {user.role}
                   </span>
                 </td>
-                <td>
+                <td data-label="Status">
                   <button
                     className="status-toggle"
                     onClick={() => handleToggleUserStatus(user._id, user.status)}
@@ -282,7 +283,7 @@ const UsersManagementPage = () => {
                     {user.status}
                   </button>
                 </td>
-                <td>
+                <td data-label="Notifications">
                   <div className="notification-preferences">
                     <span title="Low Stock" className={user.notificationPreferences.lowStock ? 'enabled' : 'disabled'}>
                       Stock
@@ -295,13 +296,13 @@ const UsersManagementPage = () => {
                     </span>
                   </div>
                 </td>
-                <td>
+                <td data-label="Last Active">
                   {user.lastActive ? format(new Date(user.lastActive), 'MMM dd, yyyy') : 'Never'}
                 </td>
-                <td>
+                <td data-label="Created">
                   {format(new Date(user.createdAt), 'MMM dd, yyyy')}
                 </td>
-                <td>
+                <td data-label="Actions">
                   <div className="action-buttons">
                     <button
                       className="btn btn-sm btn-secondary"

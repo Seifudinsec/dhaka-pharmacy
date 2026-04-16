@@ -339,7 +339,8 @@ export default function MedicinesPage() {
           )}
         </div>
 
-        <div className="table-wrap">
+        <div className="table-wrap table-responsive-cards">
+
           {loading ? (
             <div className="loading-center"><div className="spinner" /></div>
           ) : !medicines.length ? (
@@ -374,31 +375,31 @@ export default function MedicinesPage() {
                     key={m._id}
                     className={new Date() > new Date(m.expiryDate) ? 'medicine-row-expired' : m.stock < 10 ? 'medicine-row-low-stock' : ''}
                   >
-                    <td>
+                    <td data-label="Select">
                       {statusTab === 'active' ? (
                         <input type="checkbox" checked={selectedIds.includes(m._id)} onChange={() => toggleOne(m._id)} aria-label={`Select ${m.name}`} />
                       ) : null}
                     </td>
-                    <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>{i + 1}</td>
-                    <td><strong>{m.name}</strong></td>
-                    <td>{m.batchNumber || '—'}</td>
-                    <td>KES {Number(m.buyingPrice || 0).toFixed(2)}</td>
-                    <td>KES {Number(m.price).toFixed(2)}</td>
-                    <td style={{ color: Number(m.price) >= Number(m.buyingPrice || 0) ? 'var(--secondary)' : 'var(--danger)' }}>
+                    <td data-label="#" style={{ color: 'var(--gray-400)', fontSize: 12 }}>{i + 1}</td>
+                    <td data-label="Name"><strong>{m.name}</strong></td>
+                    <td data-label="Batch">{m.batchNumber || '—'}</td>
+                    <td data-label="Buying (KES)">KES {Number(m.buyingPrice || 0).toFixed(2)}</td>
+                    <td data-label="Price (KES)">KES {Number(m.price).toFixed(2)}</td>
+                    <td data-label="Unit P/L" style={{ color: Number(m.price) >= Number(m.buyingPrice || 0) ? 'var(--secondary)' : 'var(--danger)' }}>
                       KES {(Number(m.price) - Number(m.buyingPrice || 0)).toFixed(2)}
                     </td>
-                    <td style={{ color: (Number(m.price) - Number(m.buyingPrice || 0)) * Number(m.stock) >= 0 ? 'var(--secondary)' : 'var(--danger)' }}>
+                    <td data-label="Stock P/L" style={{ color: (Number(m.price) - Number(m.buyingPrice || 0)) * Number(m.stock) >= 0 ? 'var(--secondary)' : 'var(--danger)' }}>
                       KES {((Number(m.price) - Number(m.buyingPrice || 0)) * Number(m.stock)).toFixed(2)}
                     </td>
-                    <td><strong style={{ color: m.stock === 0 ? 'var(--danger)' : m.stock < 10 ? 'var(--warning)' : 'var(--secondary)' }}>{m.stock}</strong></td>
-                    <td style={{ fontSize: 13 }}>{format(new Date(m.expiryDate), 'dd/MMM/yyyy')}</td>
-                    <td>
+                    <td data-label="Stock"><strong style={{ color: m.stock === 0 ? 'var(--danger)' : m.stock < 10 ? 'var(--warning)' : 'var(--secondary)' }}>{m.stock}</strong></td>
+                    <td data-label="Expiry Date" style={{ fontSize: 13 }}>{format(new Date(m.expiryDate), 'dd/MMM/yyyy')}</td>
+                    <td data-label="Status">
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {stockBadge(m)}
                         <span className={`badge ${m.status === 'inactive' ? 'badge-gray' : 'badge-green'}`}>{m.status === 'inactive' ? 'Inactive' : 'Active'}</span>
                       </div>
                     </td>
-                    <td>
+                    <td data-label="Actions">
                       <div style={{ display: 'flex', gap: 6 }}>
                         {m.status === 'active' && (
                           <>

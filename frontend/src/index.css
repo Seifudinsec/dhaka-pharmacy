@@ -410,7 +410,11 @@ body {
   }
 }
 
-.page-header .header-meta { font-size: 13px; color: var(--gray-500); }
+@media (max-width: 600px) {
+  .page-header .header-meta {
+    display: none;
+  }
+}
 .page-content { padding: 28px; flex: 1; }
 @media (max-width: 768px) {
   .page-content {
@@ -977,25 +981,39 @@ body {
 .notification-panel {
   position: absolute;
   right: 0;
-  top: 44px;
-  width: min(410px, 86vw);
-  max-height: 65vh;
-  overflow: hidden;
+  top: 48px;
+  width: 400px;
+  max-width: calc(100vw - 32px);
+  max-height: 80vh;
   background: #fff;
   border: 1px solid var(--gray-200);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  z-index: 200;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2xl);
+  z-index: var(--z-fixed);
+  visibility: hidden;
   opacity: 0;
-  transform: translateY(-8px);
-  pointer-events: none;
-  transition: opacity var(--transition), transform var(--transition);
+  transform: translateY(-10px);
+  transition: all var(--transition-slow);
 }
+
+@media (max-width: 480px) {
+  .notification-panel {
+    position: fixed;
+    top: 64px;
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: none;
+    transform: translateY(-20px);
+  }
+}
+
 .notification-panel.open {
+  visibility: visible;
   opacity: 1;
   transform: translateY(0);
-  pointer-events: auto;
 }
+
 .notification-panel-header {
   display: flex;
   justify-content: space-between;
@@ -1667,4 +1685,109 @@ tbody tr:hover { background: var(--gray-50); }
 }
 
 
-@media (max-width: 768px) { .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; } }
+/* ===== Mobile Table to Card Transformation ===== */
+@media (max-width: 768px) {
+  .table-responsive-cards table,
+  .table-responsive-cards thead,
+  .table-responsive-cards tbody,
+  .table-responsive-cards th,
+  .table-responsive-cards td,
+  .table-responsive-cards tr {
+    display: block;
+  }
+
+  .table-responsive-cards thead tr {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+  }
+
+  .table-responsive-cards tr {
+    background: #fff;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    margin-bottom: 12px;
+    padding: 12px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  [data-theme='dark'] .table-responsive-cards tr {
+    background: var(--gray-50);
+    border-color: var(--gray-200);
+  }
+
+  .table-responsive-cards td {
+    border: none;
+    border-bottom: 1px solid var(--gray-100);
+    position: relative;
+    padding: 10px 0 10px 45%;
+    text-align: right;
+    min-height: 40px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    font-size: 13px;
+  }
+  
+  [data-theme='dark'] .table-responsive-cards td {
+    border-color: var(--gray-200);
+  }
+
+  .table-responsive-cards td:last-child {
+    border-bottom: 0;
+    margin-top: 8px;
+    padding-top: 12px;
+    justify-content: center;
+    padding-left: 0;
+  }
+
+  .table-responsive-cards td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 0;
+    width: 45%;
+    padding-right: 10px;
+    white-space: nowrap;
+    text-align: left;
+    font-weight: 700;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+  }
+  
+  /* Metric Card density */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .metric-card {
+    padding: 14px !important;
+  }
+
+  .metric-value {
+    font-size: 18px !important;
+  }
+  
+  .metric-label {
+    font-size: 12px !important;
+  }
+
+  .filter-tabs {
+    overflow-x: auto;
+    display: flex;
+    gap: 8px;
+    padding-bottom: 4px;
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .filter-tabs::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
+  .filter-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}

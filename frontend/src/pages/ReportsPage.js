@@ -319,7 +319,8 @@ const ReportsPage = () => {
       <div className="tables-section">
         <div className="table-container">
           <h3>Top Selling Medicines</h3>
-          <div className="table-wrap">
+          <div className="table-wrap table-responsive-cards">
+
             <table className="data-table">
               <thead>
                 <tr>
@@ -333,12 +334,13 @@ const ReportsPage = () => {
               <tbody>
                 {(reportData.topMedicines || []).map((medicine, index) => (
                   <tr key={index}>
-                    <td>{medicine.name || 'Unknown'}</td>
-                    <td>{medicine.unitsSold || 0}</td>
-                    <td>KES {(medicine.revenue || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
-                    <td>KES {(medicine.profit || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
-                    <td>{(medicine.profitMargin || 0).toFixed(1)}%</td>
+                    <td data-label="Medicine">{medicine.name || 'Unknown'}</td>
+                    <td data-label="Units Sold">{medicine.unitsSold || 0}</td>
+                    <td data-label="Revenue">KES {(medicine.revenue || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
+                    <td data-label="Profit">KES {(medicine.profit || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
+                    <td data-label="Margin">{(medicine.profitMargin || 0).toFixed(1)}%</td>
                   </tr>
+
                 ))}
               </tbody>
             </table>
@@ -347,7 +349,8 @@ const ReportsPage = () => {
 
         <div className="table-container">
           <h3>Low Performing Items</h3>
-          <div className="table-wrap">
+          <div className="table-wrap table-responsive-cards">
+
             <table className="data-table">
               <thead>
                 <tr>
@@ -361,16 +364,17 @@ const ReportsPage = () => {
               <tbody>
                 {(reportData.lowPerformingMedicines || []).map((medicine, index) => (
                   <tr key={index}>
-                    <td>{medicine.name || 'Unknown'}</td>
-                    <td>{medicine.unitsSold || 0}</td>
-                    <td>KES {(medicine.revenue || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
-                    <td>
+                    <td data-label="Medicine">{medicine.name || 'Unknown'}</td>
+                    <td data-label="Units Sold">{medicine.unitsSold || 0}</td>
+                    <td data-label="Revenue">KES {(medicine.revenue || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
+                    <td data-label="Stock Status">
                       <span className={`status-badge ${medicine.stockStatus || 'unknown'}`}>
                         {medicine.stockStatus || 'Unknown'}
                       </span>
                     </td>
-                    <td>{medicine.lastSale ? format(new Date(medicine.lastSale), 'MMM dd, yyyy') : 'Never'}</td>
+                    <td data-label="Last Sale">{medicine.lastSale ? format(new Date(medicine.lastSale), 'MMM dd, yyyy') : 'Never'}</td>
                   </tr>
+
                 ))}
               </tbody>
             </table>

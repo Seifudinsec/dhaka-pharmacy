@@ -208,7 +208,8 @@ export default function SalesPage() {
           </div>
         </div>
 
-        <div className="table-wrap">
+        <div className="table-wrap table-responsive-cards">
+
           {loading ? <div className="loading-center"><div className="spinner" /></div>
             : !sales.length ? (
               <div className="empty-state">
@@ -233,8 +234,8 @@ export default function SalesPage() {
                   {sales.map(sale => (
                     <React.Fragment key={sale._id}>
                       <tr>
-                        <td style={{ fontSize: 13 }}>{format(new Date(sale.createdAt), 'dd MMM yyyy, HH:mm')}</td>
-                        <td>
+                        <td data-label="Date" style={{ fontSize: 13 }}>{format(new Date(sale.createdAt), 'dd MMM yyyy, HH:mm')}</td>
+                        <td data-label="Items">
                           {sale.items.slice(0, 2).map(i => (
                             <span key={i.medicineName} className="badge badge-blue" style={{ marginRight: 4, marginBottom: 2 }}>
                               {i.medicineName} ×{i.quantity}
@@ -242,18 +243,18 @@ export default function SalesPage() {
                           ))}
                           {sale.items.length > 2 && <span className="badge badge-gray">+{sale.items.length - 2}</span>}
                         </td>
-                        <td style={{ fontSize: 13, color: 'var(--gray-500)' }}>{sale.servedBy?.username || '–'}</td>
-                        <td style={{ fontSize: 12, color: 'var(--gray-500)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sale.notes || '–'}</td>
-                        <td>
+                        <td data-label="Served By" style={{ fontSize: 13, color: 'var(--gray-500)' }}>{sale.servedBy?.username || '–'}</td>
+                        <td data-label="Notes" style={{ fontSize: 12, color: 'var(--gray-500)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sale.notes || '–'}</td>
+                        <td data-label="Status">
                           <span className={`status-badge ${sale.status || 'completed'}`}>
                             {sale.status === 'completed' ? 'Completed' : 
                              sale.status === 'partially_returned' ? 'Partially Returned' : 
                              sale.status === 'fully_refunded' ? 'Fully Refunded' : 'Completed'}
                           </span>
                         </td>
-                        <td><strong style={{ color: 'var(--secondary)' }}>KES {sale.total.toFixed(2)}</strong></td>
-                        <td>
-                          <div className="action-buttons" style={{ display: 'flex', gap: 4 }}>
+                        <td data-label="Total"><strong style={{ color: 'var(--secondary)' }}>KES {sale.total.toFixed(2)}</strong></td>
+                        <td data-label="Actions">
+                          <div className="action-buttons" style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
                             {sale.status !== 'fully_refunded' && (
                               <button 
                                 className="btn btn-sm btn-warning" 
@@ -269,6 +270,7 @@ export default function SalesPage() {
                           </div>
                         </td>
                       </tr>
+
                       {expanded === sale._id && (
                         <tr>
                           <td colSpan={7} className="sales-details-cell">

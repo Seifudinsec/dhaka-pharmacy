@@ -110,7 +110,8 @@ export default function InventoryPage() {
           </div>
         </div>
 
-        <div className="table-wrap">
+        <div className="table-wrap table-responsive-cards">
+
           {loading ? <div className="loading-center"><div className="spinner" /></div>
             : !medicines.length ? (
               <div className="empty-state">
@@ -133,13 +134,14 @@ export default function InventoryPage() {
                 <tbody>
                   {medicines.map((m, i) => (
                     <tr key={m._id} className={`${getRowClass(m)} ${highlightId === m._id ? 'inventory-row-highlight' : ''}`.trim()}>
-                      <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>{i + 1}</td>
-                      <td><strong>{m.name}</strong></td>
-                      <td>KES {Number(m.price).toFixed(2)}</td>
-                      <td>{getStockDisplay(m)}</td>
-                      <td>{getExpiryDisplay(m)}</td>
-                      <td style={{ fontSize: 12, color: 'var(--gray-500)' }}>{format(new Date(m.updatedAt), 'dd MMM yyyy')}</td>
+                      <td data-label="#" style={{ color: 'var(--gray-400)', fontSize: 12 }}>{i + 1}</td>
+                      <td data-label="Medicine Name"><strong>{m.name}</strong></td>
+                      <td data-label="Price (KES)">KES {Number(m.price).toFixed(2)}</td>
+                      <td data-label="Stock">{getStockDisplay(m)}</td>
+                      <td data-label="Expiry Date">{getExpiryDisplay(m)}</td>
+                      <td data-label="Last Updated" style={{ fontSize: 12, color: 'var(--gray-500)' }}>{format(new Date(m.updatedAt), 'dd MMM yyyy')}</td>
                     </tr>
+
                   ))}
                 </tbody>
               </table>

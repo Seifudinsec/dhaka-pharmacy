@@ -172,7 +172,8 @@ export default function Dashboard() {
           <h2>Recent Transactions</h2>
           <button className="btn btn-secondary btn-sm" onClick={() => navigate('/sales')}>View All</button>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap table-responsive-cards">
+
           {!stats?.recentSales?.length ? (
             <div className="empty-state">
               <div className="empty-icon"><AppIcon icon={faMoneyBillTrendUp} size="xl" tone="muted" /></div>
@@ -192,8 +193,8 @@ export default function Dashboard() {
               <tbody>
                 {stats.recentSales.map(sale => (
                   <tr key={sale._id}>
-                    <td>{format(new Date(sale.createdAt), 'dd MMM yyyy, HH:mm')}</td>
-                    <td>
+                    <td data-label="Date">{format(new Date(sale.createdAt), 'dd MMM yyyy, HH:mm')}</td>
+                    <td data-label="Items">
                       {sale.items.slice(0, 2).map(i => (
                         <span key={i.medicineName} className="badge badge-blue" style={{ marginRight: 4, marginBottom: 2 }}>
                           {i.medicineName} ×{i.quantity}
@@ -201,11 +202,12 @@ export default function Dashboard() {
                       ))}
                       {sale.items.length > 2 && <span className="badge badge-gray">+{sale.items.length - 2} more</span>}
                     </td>
-                    <td style={{ color: 'var(--gray-500)', fontSize: 13 }}>{sale.servedBy?.username || '–'}</td>
+                    <td data-label="Served By" style={{ color: 'var(--gray-500)', fontSize: 13 }}>{sale.servedBy?.username || '–'}</td>
                     {isAdmin && (
-                      <td><strong style={{ color: 'var(--secondary)' }}>KES {sale.total.toLocaleString('en-KE', { minimumFractionDigits: 2 })}</strong></td>
+                      <td data-label="Total"><strong style={{ color: 'var(--secondary)' }}>KES {sale.total.toLocaleString('en-KE', { minimumFractionDigits: 2 })}</strong></td>
                     )}
                   </tr>
+
                 ))}
               </tbody>
             </table>
