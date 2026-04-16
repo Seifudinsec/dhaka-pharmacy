@@ -150,8 +150,6 @@ export default function SettingsPage({ theme, onThemeChange, notificationSetting
       );
     }
 
-    }
-    
     if (activeTab === 'appearance') {
       return (
         <div className="settings-content-stack">
