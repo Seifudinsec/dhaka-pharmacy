@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { faArrowsRotate, faFloppyDisk, faPenToSquare, faPills, faPlus, faPowerOff, faTrashCan, faXmark, faMagnifyingGlass, faCheckCircle, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
 import api from '../utils/api';
