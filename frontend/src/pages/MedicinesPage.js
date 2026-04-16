@@ -174,6 +174,11 @@ export default function MedicinesPage() {
   const isAdmin = user?.role === 'admin';
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [statusTab, setStatusTab] = useState('active');
+  const [modal, setModal] = useState(null); // { type: 'add'|'edit'|'deactivate'|'reactivate', medicine? }
+  const [selectedIds, setSelectedIds] = useState([]);
   const [bulkDeactivating, setBulkDeactivating] = useState(false);
   const searchRef = useRef();
 
