@@ -3,6 +3,8 @@ const router = express.Router();
 const Medicine = require('../models/Medicine');
 const Sale = require('../models/Sale');
 const User = require('../models/User');
+const Return = require('../models/Return');
+const AuditLog = require('../models/AuditLog');
 const { protect, adminOnly } = require('../middleware/auth');
 
 router.use(protect);
@@ -124,9 +126,10 @@ router.post('/danger/delete-all-data', adminOnly, async (req, res) => {
     await Promise.all([
       Sale.deleteMany({}),
       Medicine.deleteMany({}),
-      User.deleteMany({ role: { $ne: 'admin' } }),
+      Return.deleteMany({}),
+      AuditLog.deleteMany({}),
     ]);
-    res.json({ success: true, message: 'All operational data deleted. Admin users preserved.' });
+    res.json({ success: true, message: 'All operational data (Sales, Medicines, Returns, Logs) deleted. Users preserved.' });
   } catch (error) {
     console.error('Delete all data error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete data.' });
