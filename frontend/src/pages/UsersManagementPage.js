@@ -15,8 +15,21 @@ const UsersManagementPage = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    role: 'pharmacist',
+    notificationPreferences: {
+      lowStock: true,
+      expiry: true,
+      dailySales: false
     }
   });
+  
+  // States for the 3-Step Password Reset Wizard
+  const [resetStep, setResetStep] = useState(0); // 0: Verify Admin, 1: New Pass, 2: Final Confirm
+  const [resetData, setResetData] = useState({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
+  const [verifying, setVerifying] = useState(false);
   
   const [usernameStatus, setUsernameStatus] = useState({ loading: false, exists: false, checked: false });
   const debouncedUsername = useDebounce(formData.username, 400);
@@ -107,18 +120,35 @@ const UsersManagementPage = () => {
     }
   };
 
+  const handleVerifyCurrentPassword = async (e) => {
+    e.preventDefault();
+    setVerifying(true);
+    try {
+      const { data } = await api.post('/users/verify-password', { password: resetData.currentPassword });
+      if (data.success) {
+        setResetStep(1);
+        toast.success('Identity verified. You may now enter a new password.');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Verification failed. Please check your password.');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const handleResetPassword = async (e) => {
     e.preventDefault();
     try {
       const { data } = await api.post(`/users/${selectedUser._id}/reset-password`, {
-        newPassword: formData.password,
-        confirmPassword: formData.confirmPassword
+        newPassword: resetData.newPassword,
+        confirmPassword: resetData.currentPassword
       });
       if (data.success) {
         toast.success('Password reset successfully');
         setShowResetPasswordModal(false);
         setSelectedUser(null);
-        setFormData({ ...formData, password: '', confirmPassword: '' });
+        setResetData({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
+        setResetStep(0);
       }
     } catch (error) {
       console.error('Error resetting password:', error);
@@ -170,7 +200,8 @@ const UsersManagementPage = () => {
 
   const openResetPasswordModal = (user) => {
     setSelectedUser(user);
-    setFormData({ ...formData, password: '', confirmPassword: '' });
+    setResetData({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
+    setResetStep(0);
     setShowResetPasswordModal(true);
   };
 
@@ -525,59 +556,138 @@ const UsersManagementPage = () => {
         </div>
       )}
 
-      {/* Reset Password Modal */}
+      {/* 3-Step Secure Reset Password Modal */}
       {showResetPasswordModal && selectedUser && (
         <div className="modal-overlay" onClick={() => setShowResetPasswordModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
             <div className="modal-header">
-              <h2>Reset Password</h2>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <h2 style={{ marginBottom: '4px' }}>Secure Password Reset</h2>
+                <div className="step-indicator" style={{ display: 'flex', gap: '8px' }}>
+                  {[0, 1, 2].map(s => (
+                    <div key={s} style={{ 
+                      height: '4px', 
+                      flex: 1, 
+                      borderRadius: '2px',
+                      background: resetStep >= s ? 'var(--blue-600)' : 'var(--slate-200)'
+                    }} />
+                  ))}
+                </div>
+              </div>
               <button className="modal-close" onClick={() => setShowResetPasswordModal(false)}>×</button>
             </div>
-            <form onSubmit={handleResetPassword} className="modal-body">
-              <div className="form-group">
-                <label htmlFor="reset-user">User</label>
-                <input
-                  id="reset-user"
-                  type="text"
-                  value={selectedUser.username}
-                  disabled
-                  className="form-input"
-                />
+
+            <div className="modal-body">
+              <div style={{ padding: '8px 12px', background: 'var(--slate-50)', borderRadius: '6px', marginBottom: '20px', border: '1px solid var(--slate-100)' }}>
+                <p style={{ margin: 0, fontSize: '12px', color: 'var(--slate-500)' }}>Target Account</p>
+                <div style={{ fontWeight: 600, color: 'var(--slate-900)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AppIcon icon={faKey} size="sm" /> {selectedUser.username}
+                </div>
               </div>
-              <div className="form-group">
-                <label htmlFor="reset-password">New Password</label>
-                <input
-                  id="reset-password"
-                  type="password"
-                  required
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="form-input"
-                />
-              </div>
-              <div className="form-group" style={{ marginTop: '16px', padding: '12px', background: 'var(--amber-50)', border: '1px solid var(--amber-200)', borderRadius: '6px' }}>
-                <label htmlFor="confirm-admin-password" style={{ color: 'var(--amber-800)', fontWeight: 600 }}>Your Original Password (To Confirm)</label>
-                <input
-                  id="confirm-admin-password"
-                  type="password"
-                  required
-                  placeholder="Enter your current password"
-                  value={formData.confirmPassword || ''}
-                  onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                  className="form-input"
-                  style={{ borderColor: 'var(--amber-300)' }}
-                />
-                <p style={{ fontSize: '11px', color: 'var(--amber-700)', marginTop: '4px' }}>Requirement: You must enter YOUR current password to authorize this reset.</p>
-              </div>
-              <div className="modal-actions">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowResetPasswordModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={!formData.password || !formData.confirmPassword}>
-                  Reset Password
-                </button>
-              </div>
-            </form>
+
+              {resetStep === 0 && (
+                <form onSubmit={handleVerifyCurrentPassword}>
+                  <div className="form-group">
+                    <label htmlFor="verify-password">Confirm Your Identity</label>
+                    <p style={{ fontSize: '13px', color: 'var(--slate-600)', marginBottom: '12px' }}>
+                      To begin, please enter **YOUR** current administrator password.
+                    </p>
+                    <input
+                      id="verify-password"
+                      type="password"
+                      required
+                      autoFocus
+                      placeholder="Your current password"
+                      value={resetData.currentPassword}
+                      onChange={(e) => setResetData({ ...resetData, currentPassword: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="modal-actions" style={{ marginTop: '24px' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowResetPasswordModal(false)}>Cancel</button>
+                    <button type="submit" className="btn btn-primary" disabled={verifying || !resetData.currentPassword}>
+                      {verifying ? 'Verifying...' : 'Next Step'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {resetStep === 1 && (
+                <div>
+                  <div className="form-group">
+                    <label htmlFor="new-password">New Password</label>
+                    <input
+                      id="new-password"
+                      type="password"
+                      required
+                      autoFocus
+                      placeholder="Min 6 characters"
+                      value={resetData.newPassword}
+                      onChange={(e) => setResetData({ ...resetData, newPassword: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginTop: '12px' }}>
+                    <label htmlFor="confirm-new-password">Confirm New Password</label>
+                    <input
+                      id="confirm-new-password"
+                      type="password"
+                      required
+                      placeholder="Repeat new password"
+                      value={resetData.confirmNewPassword}
+                      onChange={(e) => setResetData({ ...resetData, confirmNewPassword: e.target.value })}
+                      className="form-input"
+                    />
+                    {resetData.newPassword && resetData.confirmNewPassword && resetData.newPassword !== resetData.confirmNewPassword && (
+                      <p style={{ color: 'var(--red-600)', fontSize: '11px', marginTop: '4px' }}>Passwords do not match.</p>
+                    )}
+                  </div>
+                  <div className="modal-actions" style={{ marginTop: '24px' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setResetStep(0)}>Back</button>
+                    <button 
+                      type="button" 
+                      className="btn btn-primary" 
+                      onClick={() => setResetStep(2)}
+                      disabled={!resetData.newPassword || resetData.newPassword.length < 6 || resetData.newPassword !== resetData.confirmNewPassword}
+                    >
+                      Security Check
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {resetStep === 2 && (
+                <form onSubmit={handleResetPassword}>
+                  <div style={{ padding: '16px', background: 'var(--amber-50)', border: '1px solid var(--amber-200)', borderRadius: '8px', marginBottom: '20px' }}>
+                    <h3 style={{ margin: '0 0 10px 0', color: 'var(--amber-800)', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <AppIcon icon={faUserShield} /> Final Security Check
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '13px', color: 'var(--amber-700)', lineHeight: '1.5' }}>
+                      As a final security step, please re-enter **YOUR** original password to complete the reset for <strong>{selectedUser.username}</strong>.
+                    </p>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="final-confirm-pass">Confirm Your Password Again</label>
+                    <input
+                      id="final-confirm-pass"
+                      type="password"
+                      required
+                      autoFocus
+                      placeholder="Re-enter your current password"
+                      value={resetData.currentPassword}
+                      onChange={(e) => setResetData({ ...resetData, currentPassword: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="modal-actions" style={{ marginTop: '24px' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setResetStep(1)}>Back</button>
+                    <button type="submit" className="btn btn-primary" style={{ background: 'var(--green-600)' }}>
+                      Complete Password Reset
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
         </div>
       )}

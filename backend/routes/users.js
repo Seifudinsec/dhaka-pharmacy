@@ -144,6 +144,29 @@ router.post('/:id/reset-password', auditLog('USER_PASSWORD_RESET', 'User'), asyn
   }
 });
 
+// POST /api/users/verify-password
+// Used to verify admin credentials before sensitive steps in the management UI
+router.post('/verify-password', async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({ success: false, message: 'Password is required for verification.' });
+    }
+
+    const user = await User.findById(req.user._id).select('+password');
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (isMatch) {
+      res.json({ success: true, message: 'Password verified.' });
+    } else {
+      res.status(401).json({ success: false, message: 'Incorrect password verification failed.' });
+    }
+  } catch (error) {
+    console.error('Verify password error:', error);
+    res.status(500).json({ success: false, message: 'Error verifying password.' });
+  }
+});
+
 // PUT /api/users/:id/toggle-status
 router.put('/:id/toggle-status', async (req, res) => {
   try {
