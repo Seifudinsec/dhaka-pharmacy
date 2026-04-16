@@ -59,8 +59,9 @@ const Sidebar = ({ open, onClose }) => {
 
   return (
     <>
-      {open && <div className="modal-overlay" style={{ zIndex: 99 }} onClick={onClose} />}
-      <aside className={`sidebar${open ? ' open' : ''}`}>
+      {open && <div className="modal-overlay" style={{ zIndex: var(--z-modal-backdrop) }} onClick={onClose} />}
+      <aside className={`sidebar ${open ? 'open' : ''}`}>
+
         <div className="sidebar-logo">
           <img src="/dhaka-pharmacy-logo.png" alt="Dhaka Pharmacy logo" style={{ width: 44, height: 44, objectFit: 'contain', borderRadius: 6 }} />
           <div className="sidebar-logo-text">
@@ -149,7 +150,7 @@ const AppLayout = ({ theme, setTheme }) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
               className="btn btn-secondary btn-icon sidebar-toggle"
-              onClick={() => setSidebarOpen(true)}
+              onClick={(e) => { e.stopPropagation(); setSidebarOpen(true); }}
               aria-label="Open menu"
             ><AppIcon icon={faBars} /></button>
             <img src="/dhaka-pharmacy-logo.png" alt="Dhaka Pharmacy" style={{ width: 34, height: 34, objectFit: 'contain', borderRadius: 4 }} />

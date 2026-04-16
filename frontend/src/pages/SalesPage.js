@@ -197,11 +197,11 @@ export default function SalesPage() {
           <div className="table-toolbar-filters">
             <div className="form-group" style={{ margin: 0 }}>
               <label htmlFor="filter-from" className="form-label" style={{ marginBottom: 4 }}>From</label>
-              <input id="filter-from" className="form-control" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ width: 160 }} />
+              <input id="filter-from" className="form-control" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
             </div>
             <div className="form-group" style={{ margin: 0 }}>
               <label htmlFor="filter-to" className="form-label" style={{ marginBottom: 4 }}>To</label>
-              <input id="filter-to" className="form-control" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ width: 160 }} />
+              <input id="filter-to" className="form-control" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
             </div>
             <button className="btn btn-primary" onClick={() => fetchSales(1)}><AppIcon icon={faMagnifyingGlass} /> Filter</button>
             <button className="btn btn-secondary" onClick={() => { setStartDate(''); setEndDate(''); }}>Clear</button>
