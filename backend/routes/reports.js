@@ -57,8 +57,17 @@ router.get("/analytics", async (req, res) => {
         dSales.reduce((sum, s) => sum + s.total, 0) -
         dReturns.reduce((sum, r) => sum + r.totalRefund, 0);
       const profit =
-        dSales.reduce((sum, s) => sum + (s.totalProfit || 0), 0) -
-        dReturns.reduce((sum, r) => sum + r.totalProfitLoss, 0);
+        dSales.reduce(
+          (sum, s) =>
+            sum +
+            (s.totalProfit ??
+              s.profit ??
+              s.items.reduce(
+                (itemSum, item) => itemSum + (item.profit || 0),
+                0,
+              )),
+          0,
+        ) - dReturns.reduce((sum, r) => sum + r.totalProfitLoss, 0);
 
       dailyRevenue.push(Number(revenue.toFixed(2)));
       dailyProfit.push(Number(profit.toFixed(2)));
@@ -148,7 +157,11 @@ router.get("/analytics", async (req, res) => {
     const totalRevenue = totalSalesRevenue - totalReturnRefunds;
 
     const totalSalesProfit = sales.reduce(
-      (sum, s) => sum + (s.totalProfit || 0),
+      (sum, s) =>
+        sum +
+        (s.totalProfit ??
+          s.profit ??
+          s.items.reduce((itemSum, item) => itemSum + (item.profit || 0), 0)),
       0,
     );
     const totalReturnProfitLoss = returns.reduce(
