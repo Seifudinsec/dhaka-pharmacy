@@ -53,21 +53,17 @@ router.get("/analytics", async (req, res) => {
         (r) => r.createdAt >= dStart && r.createdAt <= dEnd,
       );
 
-      const revenue =
-        dSales.reduce((sum, s) => sum + s.total, 0) -
-        dReturns.reduce((sum, r) => sum + r.totalRefund, 0);
-      const profit =
-        dSales.reduce(
-          (sum, s) =>
-            sum +
-            (s.totalProfit ??
-              s.profit ??
-              s.items.reduce(
-                (itemSum, item) => itemSum + (item.profit || 0),
-                0,
-              )),
-          0,
-        ) - dReturns.reduce((sum, r) => sum + r.totalProfitLoss, 0);
+      // Sale documents already reflect net values after returns,
+      // so do not subtract returns again in analytics buckets.
+      const revenue = dSales.reduce((sum, s) => sum + s.total, 0);
+      const profit = dSales.reduce(
+        (sum, s) =>
+          sum +
+          (s.totalProfit ??
+            s.profit ??
+            s.items.reduce((itemSum, item) => itemSum + (item.profit || 0), 0)),
+        0,
+      );
 
       dailyRevenue.push(Number(revenue.toFixed(2)));
       dailyProfit.push(Number(profit.toFixed(2)));
@@ -110,17 +106,9 @@ router.get("/analytics", async (req, res) => {
       });
     });
 
-    // Subtract quantities from returns in the medicine sales list
-    returns.forEach((ret) => {
-      ret.items.forEach((item) => {
-        const medName = item.medicineName;
-        if (medicineSales[medName]) {
-          medicineSales[medName].unitsSold -= item.quantity;
-          medicineSales[medName].revenue -= item.subtotal;
-          medicineSales[medName].profit -= item.profit;
-        }
-      });
-    });
+    // Do NOT subtract returns again here.
+    // Returned items were already reflected in Sale totals at sale-level.
+    // Subtracting return rows again would understate medicine performance.
 
     const topMedicines = Object.values(medicineSales)
       .sort((a, b) => b.revenue - a.revenue)
@@ -149,14 +137,14 @@ router.get("/analytics", async (req, res) => {
       }
     }
 
-    const totalSalesRevenue = sales.reduce((sum, s) => sum + s.total, 0);
-    const totalReturnRefunds = returns.reduce(
-      (sum, r) => sum + r.totalRefund,
-      0,
-    );
-    const totalRevenue = totalSalesRevenue - totalReturnRefunds;
+    // IMPORTANT:
+    // Sale.total is already reduced when a return is processed in returns route.
+    // So subtracting Return.totalRefund again here would double-count returns.
+    const totalRevenue = sales.reduce((sum, s) => sum + s.total, 0);
 
-    const totalSalesProfit = sales.reduce(
+    // Sale.totalProfit is also already decremented on returns.
+    // Keep a legacy fallback for old records where totalProfit may not exist.
+    const totalProfit = sales.reduce(
       (sum, s) =>
         sum +
         (s.totalProfit ??
@@ -164,11 +152,6 @@ router.get("/analytics", async (req, res) => {
           s.items.reduce((itemSum, item) => itemSum + (item.profit || 0), 0)),
       0,
     );
-    const totalReturnProfitLoss = returns.reduce(
-      (sum, r) => sum + r.totalProfitLoss,
-      0,
-    );
-    const totalProfit = totalSalesProfit - totalReturnProfitLoss;
 
     const totalSales = sales.length;
     const averageSaleValue = totalSales > 0 ? totalRevenue / totalSales : 0;
