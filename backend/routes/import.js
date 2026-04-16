@@ -137,7 +137,7 @@ const validateRow = (row, index, headerMapping) => {
     errors,
     data: errors.length === 0 ? {
       name,
-      price: Number((buyingPrice * 1.4).toFixed(2)), // Strictly enforce 1.4x markup
+      price: price > 0 ? price : Number((buyingPrice * 1.4).toFixed(2)), // Use provided price if valid, else calculate
       buyingPrice,
       batchNumber,
       stock: Math.floor(stock),
