@@ -11,7 +11,6 @@ import AppIcon from '../components/common/AppIcon';
 const TABS = [
   { id: 'notifications', label: 'Notifications', icon: faBell },
   { id: 'data', label: 'Data Management', icon: faDatabase },
-  { id: 'users', label: 'Users & Roles', icon: faUserGroup },
   { id: 'appearance', label: 'Appearance', icon: faPalette },
   { id: 'danger', label: 'Danger Zone', icon: faTriangleExclamation },
 ];
@@ -28,14 +27,10 @@ export default function SettingsPage({ theme, onThemeChange, notificationSetting
   });
   const [savingNotif, setSavingNotif] = useState(false);
   const [notifDraftDirty, setNotifDraftDirty] = useState(false);
-  const [users, setUsers] = useState([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
-  const [newUser, setNewUser] = useState({ username: '', password: '', role: 'pharmacist' });
   const [confirm, setConfirm] = useState(null);
 
   const openConfirm = (payload) => setConfirm(payload);
   const closeConfirm = () => setConfirm(null);
-
   useEffect(() => {
     if (!notificationSettings) return;
     if (notifDraftDirty) return;
@@ -45,22 +40,6 @@ export default function SettingsPage({ theme, onThemeChange, notificationSetting
       dailySales: notificationSettings.notificationPreferences?.dailySales ?? false,
     });
   }, [notificationSettings, notifDraftDirty]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    const loadUsers = async () => {
-      setLoadingUsers(true);
-      try {
-        const { data } = await api.get('/users');
-        if (data.success) setUsers(data.data || []);
-      } catch (error) {
-        toast.error(error.response?.data?.message || 'Failed to load users.');
-      } finally {
-        setLoadingUsers(false);
-      }
-    };
-    loadUsers();
-  }, [isAdmin]);
 
   const exportSalesCsv = async () => {
     try {
@@ -121,42 +100,6 @@ export default function SettingsPage({ theme, onThemeChange, notificationSetting
     reader.readAsText(file);
   };
 
-  const addUser = async () => {
-    try {
-      const { data } = await api.post('/users', {
-        username: newUser.username.trim(),
-        password: newUser.password,
-        role: newUser.role,
-      });
-      toast.success(data.message || 'User created.');
-      setNewUser({ username: '', password: '', role: 'pharmacist' });
-      const usersRes = await api.get('/users');
-      if (usersRes.data.success) setUsers(usersRes.data.data || []);
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to create user.');
-    }
-  };
-
-  const deleteUser = async (id) => {
-    try {
-      const { data } = await api.delete(`/users/${id}`);
-      toast.success(data.message || 'User deleted.');
-      setUsers((prev) => prev.filter((u) => (u._id || u.id) !== id));
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to delete user.');
-    }
-  };
-
-  const updateRole = async (id, role) => {
-    try {
-      await api.put(`/users/${id}`, { role });
-      setUsers((prev) => prev.map((u) => ((u._id || u.id) === id ? { ...u, role } : u)));
-      toast.success('User role updated.');
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update role.');
-    }
-  };
-
   const saveNotificationSettings = async () => {
     setSavingNotif(true);
     try {
@@ -207,37 +150,8 @@ export default function SettingsPage({ theme, onThemeChange, notificationSetting
       );
     }
 
-    if (activeTab === 'users') {
-      if (!isAdmin) return <div className="alert alert-warning">Only admin users can access User & Roles management.</div>;
-      return (
-        <div className="settings-content-stack">
-          <div className="card"><div className="card-header"><h2>Add User</h2></div><div className="card-body">
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Username</label>
-                <input className="form-control" value={newUser.username} onChange={(e) => setNewUser((p) => ({ ...p, username: e.target.value }))} placeholder="e.g. pharmacist1" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Password</label>
-                <input className="form-control" type="password" value={newUser.password} onChange={(e) => setNewUser((p) => ({ ...p, password: e.target.value }))} placeholder="At least 6 characters" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Role</label>
-                <select className="form-control" value={newUser.role} onChange={(e) => setNewUser((p) => ({ ...p, role: e.target.value }))}>
-                  <option value="admin">Admin</option>
-                  <option value="pharmacist">Pharmacist</option>
-                </select>
-              </div>
-            </div>
-            <button className="btn btn-primary" onClick={addUser}><AppIcon icon={faUserPlus} /> Add User</button>
-          </div></div>
-          <div className="card"><div className="card-header"><h2>Manage Users</h2></div><div className="card-body">
-            {loadingUsers ? <div className="loading-center"><div className="spinner" /></div> : <UsersTable users={users} onRoleChange={updateRole} onDelete={deleteUser} />}
-          </div></div>
-        </div>
-      );
     }
-
+    
     if (activeTab === 'appearance') {
       return (
         <div className="settings-content-stack">
@@ -286,7 +200,7 @@ export default function SettingsPage({ theme, onThemeChange, notificationSetting
         </div></div>
       </div>
     );
-  }, [activeTab, notif, users, newUser, isAdmin, theme, onThemeChange]);
+  }, [activeTab, notif, isAdmin, theme, onThemeChange, savingNotif]);
 
   return (
     <div className="settings-page">

@@ -111,13 +111,14 @@ const UsersManagementPage = () => {
     e.preventDefault();
     try {
       const { data } = await api.post(`/users/${selectedUser._id}/reset-password`, {
-        newPassword: formData.password
+        newPassword: formData.password,
+        confirmPassword: formData.confirmPassword
       });
       if (data.success) {
         toast.success('Password reset successfully');
         setShowResetPasswordModal(false);
         setSelectedUser(null);
-        setFormData({ ...formData, password: '' });
+        setFormData({ ...formData, password: '', confirmPassword: '' });
       }
     } catch (error) {
       console.error('Error resetting password:', error);
@@ -169,7 +170,7 @@ const UsersManagementPage = () => {
 
   const openResetPasswordModal = (user) => {
     setSelectedUser(user);
-    setFormData({ ...formData, password: '' });
+    setFormData({ ...formData, password: '', confirmPassword: '' });
     setShowResetPasswordModal(true);
   };
 
@@ -554,11 +555,25 @@ const UsersManagementPage = () => {
                   className="form-input"
                 />
               </div>
+              <div className="form-group" style={{ marginTop: '16px', padding: '12px', background: 'var(--amber-50)', border: '1px solid var(--amber-200)', borderRadius: '6px' }}>
+                <label htmlFor="confirm-admin-password" style={{ color: 'var(--amber-800)', fontWeight: 600 }}>Your Original Password (To Confirm)</label>
+                <input
+                  id="confirm-admin-password"
+                  type="password"
+                  required
+                  placeholder="Enter your current password"
+                  value={formData.confirmPassword || ''}
+                  onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                  className="form-input"
+                  style={{ borderColor: 'var(--amber-300)' }}
+                />
+                <p style={{ fontSize: '11px', color: 'var(--amber-700)', marginTop: '4px' }}>Requirement: You must enter YOUR current password to authorize this reset.</p>
+              </div>
               <div className="modal-actions">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowResetPasswordModal(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={!formData.password || !formData.confirmPassword}>
                   Reset Password
                 </button>
               </div>

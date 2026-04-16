@@ -106,10 +106,22 @@ router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
 // POST /api/users/:id/reset-password
 router.post('/:id/reset-password', auditLog('USER_PASSWORD_RESET', 'User'), async (req, res) => {
   try {
-    const { newPassword } = req.body;
+    const { newPassword, confirmPassword } = req.body;
     
     if (!newPassword || String(newPassword).length < 6) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+      return res.status(400).json({ success: false, message: 'New password must be at least 6 characters.' });
+    }
+
+    if (!confirmPassword) {
+      return res.status(400).json({ success: false, message: 'Your original password is required to confirm this change.' });
+    }
+
+    // Verify the password of the admin who is performing the reset
+    const admin = await User.findById(req.user._id).select('+password');
+    const isMatch = await bcrypt.compare(confirmPassword, admin.password);
+    
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Confirmation password incorrect. Authorization failed.' });
     }
 
     const salt = await bcrypt.genSalt(12);
