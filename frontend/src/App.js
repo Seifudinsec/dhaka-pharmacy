@@ -59,7 +59,7 @@ const Sidebar = ({ open, onClose }) => {
 
   return (
     <>
-      {open && <div className="modal-overlay" style={{ zIndex: var(--z-modal-backdrop) }} onClick={onClose} />}
+      {open && <div className="modal-overlay" style={{ zIndex: 'var(--z-modal-backdrop)' }} onClick={onClose} />}
       <aside className={`sidebar ${open ? 'open' : ''}`}>
 
         <div className="sidebar-logo">
