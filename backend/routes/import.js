@@ -43,6 +43,7 @@ const parseWithMonthText = (value) => {
   const raw = String(value).trim();
   if (!raw) return null;
 
+  // Format: 31/Dec/2026 or 31-Dec-2026
   const slashMatch = raw.match(/^(\d{1,2})[\/\-]([A-Za-z]{3})[\/\-](\d{2,4})$/);
   if (slashMatch) {
     const day = Number(slashMatch[1]);
@@ -51,6 +52,7 @@ const parseWithMonthText = (value) => {
     if (month !== undefined) return new Date(year, month, day);
   }
 
+  // Format: Dec/2026
   const monthYearMatch = raw.match(/^([A-Za-z]{3})[\/\-](\d{2,4})$/);
   if (monthYearMatch) {
     const month = MONTHS[monthYearMatch[1].toLowerCase()];
@@ -64,57 +66,69 @@ const parseWithMonthText = (value) => {
 const parseExcelDate = (value) => {
   if (!value) return null;
   if (value instanceof Date) return value;
+  
   // Excel serial number
   if (typeof value === 'number') {
     const d = XLSX.SSF.parse_date_code(value);
     if (d) return new Date(d.y, d.m - 1, d.d);
     return null;
   }
-  const monthTextDate = parseWithMonthText(value);
+
+  const raw = String(value).trim();
+  const monthTextDate = parseWithMonthText(raw);
   if (monthTextDate) return monthTextDate;
-  const parsed = new Date(String(value).replace(/\//g, '-'));
-  return isNaN(parsed.getTime()) ? null : parsed;
+
+  // Attempt standard JS parsing
+  const parsed = new Date(raw.replace(/\//g, '-'));
+  if (!isNaN(parsed.getTime())) return parsed;
+
+  // Try YYYY-MM-DD
+  const isoMatch = raw.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (isoMatch) return new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+
+  // Try DD-MM-YYYY
+  const dmMatch = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (dmMatch) return new Date(Number(dmMatch[3]), Number(dmMatch[2]) - 1, Number(dmMatch[1]));
+
+  return null;
 };
 
-const getFirstValue = (row, keys) => {
-  for (const key of keys) {
-    if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== '') {
-      return row[key];
-    }
-  }
-  return '';
+const HEADER_MAP = {
+  name: ['product_name', 'item_name', 'medicine_name', 'item', 'medicine', 'name', 'description'],
+  stock: ['quantity', 'stock', 'qty', 'count', 'amount', 'balance'],
+  batch: ['batch_number', 'batch', 'lot', 'batch_no', 'lot_no'],
+  expiry: ['expiry_date', 'expirydate', 'expiry', 'exp_date', 'exp'],
+  buyingPrice: ['buying_price_kes', 'buying_price', 'buying', 'cost_price', 'cost'],
+  sellingPrice: ['selling_price_kes', 'selling_price', 'price', 'selling', 'rate'],
 };
 
-const validateRow = (row, index) => {
+const validateRow = (row, index, headerMapping) => {
   const errors = [];
-  const rowNum = index + 2; // 1-indexed + header row
+  const rowNum = index + 2;
 
-  const name = String(getFirstValue(row, ['product_name', 'name'])).trim();
-  const batchNumber = String(getFirstValue(row, ['batch_number', 'batch'])).trim();
-  const buyingPriceRaw = getFirstValue(row, ['buying_price_kes', 'buying_price']);
-  const sellingPriceRaw = getFirstValue(row, ['selling_price_kes', 'selling_price', 'price']);
+  const name = String(getFirstValue(row, headerMapping.name)).trim();
+  const batchNumber = String(getFirstValue(row, headerMapping.batch)).trim() || 'UNTITLED';
+  const buyingPriceRaw = getFirstValue(row, headerMapping.buyingPrice);
+  const sellingPriceRaw = getFirstValue(row, headerMapping.sellingPrice);
   const buyingPrice = Number(buyingPriceRaw);
-  const normalizedSellingRaw = String(sellingPriceRaw).trim();
-  const hasSellingInput = normalizedSellingRaw !== '';
-  const derivedSellingPrice = Number((buyingPrice * 1.4).toFixed(2));
-  const price = hasSellingInput ? Number(sellingPriceRaw) : derivedSellingPrice;
-  const stock = Number(getFirstValue(row, ['quantity', 'stock']));
-  const expiryRaw = getFirstValue(row, ['expiry_date', 'expirydate', 'expiry']);
+  const price = Number(sellingPriceRaw);
+  const stock = Number(getFirstValue(row, headerMapping.stock));
+  const expiryRaw = getFirstValue(row, headerMapping.expiry);
   const expiryDate = parseExcelDate(expiryRaw);
 
-  if (!name) errors.push(`Row ${rowNum}: Name is empty`);
-  if (!batchNumber) errors.push(`Row ${rowNum}: Batch Number is empty`);
-  if (isNaN(buyingPrice) || buyingPrice <= 0) errors.push(`Row ${rowNum}: Buying Price must be > 0 (got "${buyingPriceRaw}")`);
-  if (isNaN(price) || price <= 0) errors.push(`Row ${rowNum}: Selling Price must be > 0 (got "${sellingPriceRaw}")`);
-  if (isNaN(stock) || stock < 0) errors.push(`Row ${rowNum}: Quantity must be >= 0 (got "${getFirstValue(row, ['quantity', 'stock'])}")`);
-  if (!expiryDate) errors.push(`Row ${rowNum}: Invalid expiry date (got "${expiryRaw}")`);
+  if (!name) errors.push(`Row ${rowNum}: Name is missing`);
+  if (isNaN(buyingPrice) || buyingPrice < 0) errors.push(`Row ${rowNum}: Invalid Buying Price (${buyingPriceRaw})`);
+  const finalPrice = isNaN(price) || price <= 0 ? Number((buyingPrice * 1.4).toFixed(2)) : price;
+  if (isNaN(finalPrice) || finalPrice <= 0) errors.push(`Row ${rowNum}: Could not determine selling price`);
+  if (isNaN(stock) || stock < 0) errors.push(`Row ${rowNum}: Invalid Quantity (${stock})`);
+  if (!expiryDate) errors.push(`Row ${rowNum}: Invalid Expiry Date (${expiryRaw})`);
 
   return {
     valid: errors.length === 0,
     errors,
     data: errors.length === 0 ? {
       name,
-      price,
+      price: finalPrice,
       buyingPrice,
       batchNumber,
       stock: Math.floor(stock),
@@ -130,123 +144,103 @@ router.post('/', upload.single('file'), async (req, res) => {
       return res.status(400).json({ success: false, message: 'No file uploaded.' });
     }
 
-    // Parse workbook
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
     const sheetName = workbook.SheetNames[0];
-    if (!sheetName) {
-      return res.status(400).json({ success: false, message: 'Excel file has no sheets.' });
-    }
+    if (!sheetName) return res.status(400).json({ success: false, message: 'Excel file has no sheets.' });
 
     const sheet = workbook.Sheets[sheetName];
     const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    if (matrix.length === 0) return res.status(400).json({ success: false, message: 'Excel file is empty.' });
 
-    if (matrix.length === 0) {
-      return res.status(400).json({ success: false, message: 'Excel file is empty.' });
+    // 1. Better Header Detection (Fuzzy)
+    let headerRowIndex = -1;
+    let headerMapping = {};
+
+    for (let i = 0; i < Math.min(matrix.length, 20); i++) {
+      const normalizedCells = matrix[i].map(c => normalizeKey(c));
+      const mapping = {};
+      let matches = 0;
+
+      for (const [canonical, aliases] of Object.entries(HEADER_MAP)) {
+        const foundIdx = normalizedCells.findIndex(c => aliases.includes(c));
+        if (foundIdx !== -1) {
+          mapping[canonical] = matrix[i][foundIdx]; // Use the actual key for lookup
+          matches++;
+        }
+      }
+
+      // If we found at least Name and Stock/Quantity, it's probably the header row
+      if (mapping.name && mapping.stock) {
+        headerRowIndex = i;
+        headerMapping = mapping;
+        break;
+      }
     }
-
-    // Find the actual header row (some files include a title row above headers)
-    const headerRowIndex = matrix.findIndex((cells) => {
-      const keys = cells.map((cell) => normalizeKey(cell));
-      return keys.includes('product_name') && keys.includes('quantity') && keys.includes('expiry_date');
-    });
 
     if (headerRowIndex === -1) {
       return res.status(400).json({
         success: false,
-        message: 'Header row not found. Expected columns: Product Name, Quantity, Expiry Date, Selling Price (KES).',
+        message: 'Could not find required columns (Name, Quantity). Please use the template.',
       });
     }
 
-    const headers = matrix[headerRowIndex].map((cell) => normalizeKey(cell));
     const rows = matrix.slice(headerRowIndex + 1)
       .filter((cells) => cells.some((cell) => String(cell).trim() !== ''))
       .map((cells) => {
-        const normalized = {};
-        headers.forEach((header, idx) => {
-          if (!header) return;
-          normalized[header] = cells[idx];
-        });
-        return normalized;
+        const rowObj = {};
+        // Match cells back to their header keys
+        matrix[headerRowIndex].forEach((h, idx) => { rowObj[h] = cells[idx]; });
+        return rowObj;
       });
 
-    if (rows.length === 0) {
-      return res.status(400).json({ success: false, message: 'No data rows found below the header.' });
-    }
+    if (rows.length === 0) return res.status(400).json({ success: false, message: 'No data rows found.' });
 
-    const headerAdjustedIndex = headerRowIndex + 1; // switch to 1-indexed
-    const expectedColumns = ['product_name', 'quantity', 'batch_number', 'expiry_date', 'buying_price_kes', 'selling_price_kes'];
-    const missingColumns = expectedColumns.filter((col) => !headers.includes(col));
-    if (missingColumns.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Missing required columns: ${missingColumns.join(', ')}`,
-      });
-    }
-
-    const existingBeforeImport = await Medicine.find({}, 'name').lean();
-    const existingNameSet = new Set(
-      existingBeforeImport.map((m) => String(m.name || '').trim().toLowerCase())
-    );
-
+    // 2. High-Performance Bulk Processing
+    const bulkOps = [];
+    const failedRows = [];
     let addedCount = 0;
     let updatedCount = 0;
-    let duplicateRowsCount = 0;
-    const failedRows = [];
+
+    // Get existing to differentiate Added/Updated (optional, for summary)
+    const existingNames = new Set((await Medicine.find({}, 'name')).map(m => m.name.toLowerCase()));
 
     for (let i = 0; i < rows.length; i++) {
-      const excelRowNumber = headerAdjustedIndex + i + 1;
-      const { valid, errors, data } = validateRow(rows[i], excelRowNumber - 2);
-
+      const { valid, errors, data } = validateRow(rows[i], headerRowIndex + i, headerMapping);
       if (!valid) {
-        failedRows.push({ row: excelRowNumber, errors });
+        failedRows.push({ row: headerRowIndex + i + 2, errors });
         continue;
       }
 
-      try {
-        const existing = await Medicine.findOne({ name: { $regex: `^${data.name}$`, $options: 'i' } });
-        const normalizedName = data.name.trim().toLowerCase();
+      const isUpdate = existingNames.has(data.name.toLowerCase());
+      if (isUpdate) updatedCount++; else addedCount++;
 
-        if (existing) {
-          await Medicine.findByIdAndUpdate(existing._id, {
-            price: data.price,
-            buyingPrice: data.buyingPrice,
-            batchNumber: data.batchNumber,
-            stock: data.stock,
-            expiryDate: data.expiryDate,
-            status: 'active',
-          });
-          if (existingNameSet.has(normalizedName)) {
-            updatedCount++;
-          } else {
-            duplicateRowsCount++;
-          }
-        } else {
-          await Medicine.create(data);
-          addedCount++;
+      bulkOps.push({
+        updateOne: {
+          filter: { name: { $regex: `^${data.name.trim()}$`, $options: 'i' } },
+          update: { $set: { ...data, status: 'active' } },
+          upsert: true,
         }
-      } catch (dbErr) {
-        failedRows.push({ row: excelRowNumber, errors: [`Database error: ${dbErr.message}`] });
-      }
+      });
+    }
+
+    if (bulkOps.length > 0) {
+      await Medicine.bulkWrite(bulkOps, { ordered: false });
     }
 
     res.json({
       success: true,
-      message: `Import complete. Added: ${addedCount}, Updated: ${updatedCount}, Duplicates in file: ${duplicateRowsCount}, Failed: ${failedRows.length}`,
+      message: `Direct Bulk Import Complete. Speed optimization active.`,
       summary: {
         added: addedCount,
         updated: updatedCount,
-        duplicateRows: duplicateRowsCount,
         failed: failedRows.length,
         total: rows.length,
       },
       failedRows: failedRows.length > 0 ? failedRows : undefined,
     });
   } catch (error) {
-    if (error.message && error.message.includes('Excel')) {
-      return res.status(400).json({ success: false, message: error.message });
-    }
-    console.error('Import error:', error);
-    res.status(500).json({ success: false, message: 'Failed to process Excel file.' });
+    console.error('Bulk import error:', error);
+    res.status(500).json({ success: false, message: 'Server error during bulk import. ' + error.message });
   }
 });
 

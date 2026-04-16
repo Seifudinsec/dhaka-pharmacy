@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { faCircleCheck, faDownload, faFileArrowUp, faFileCircleXmark, faFileImport, faFileLines, faFolderOpen, faRocket, faTriangleExclamation, faXmark } from '@fortawesome/free-solid-svg-icons';
 import api from '../utils/api';
@@ -56,25 +57,14 @@ export default function ImportPage() {
   };
 
   const downloadTemplate = () => {
-    // Generate template using SheetJS if available, or CSV fallback
     try {
-      const XLSX = window.XLSX;
-      if (XLSX) {
-        const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...SAMPLE_DATA]);
-        XLSX.utils.book_append_sheet(wb, ws, 'Medicines');
-        XLSX.writeFile(wb, 'dhaka_import_template.xlsx');
-      } else {
-        throw new Error('XLSX not loaded');
-      }
-    } catch {
-      // CSV fallback
-      const rows = [TEMPLATE_HEADERS, ...SAMPLE_DATA].map(r => r.join(',')).join('\n');
-      const blob = new Blob([rows], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'dhaka_import_template.csv';
-      a.click(); URL.revokeObjectURL(url);
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...SAMPLE_DATA]);
+      XLSX.utils.book_append_sheet(wb, ws, 'Medicines');
+      XLSX.writeFile(wb, 'dhaka_import_template.xlsx');
+    } catch (err) {
+      console.error('Template download error:', err);
+      toast.error('Failed to generate Excel template.');
     }
   };
 
