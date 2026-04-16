@@ -130,7 +130,7 @@ const ReportsPage = () => {
     }
   };
 
-  const exportReport = async (format) => {
+  const exportReport = async (exportFormat) => {
     try {
       let startDate, endDate;
 
@@ -154,20 +154,20 @@ const ReportsPage = () => {
         }
       }
 
-      const response = await api.get(`/reports/export?startDate=${startDate}&endDate=${endDate}&format=${format}`, {
+      const response = await api.get(`/reports/export?startDate=${startDate}&endDate=${endDate}&format=${exportFormat}`, {
         responseType: 'blob'
       });
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `pharmacy-report-${startDate}-to-${endDate}.${format}`);
+      link.setAttribute('download', `pharmacy-report-${startDate}-to-${endDate}.${exportFormat}`);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      toast.success(`Report exported as ${format.toUpperCase()}`);
+      toast.success(`Report exported as ${exportFormat.toUpperCase()}`);
     } catch (error) {
       console.error('Error exporting report:', error);
       toast.error('Failed to export report');
