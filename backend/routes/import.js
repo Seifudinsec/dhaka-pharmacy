@@ -93,6 +93,15 @@ const parseExcelDate = (value) => {
   return null;
 };
 
+const getFirstValue = (row, keys) => {
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== '') {
+      return row[key];
+    }
+  }
+  return '';
+};
+
 const HEADER_MAP = {
   name: ['product_name', 'item_name', 'medicine_name', 'item', 'medicine', 'name', 'description'],
   stock: ['quantity', 'stock', 'qty', 'count', 'amount', 'balance'],
@@ -128,7 +137,7 @@ const validateRow = (row, index, headerMapping) => {
     errors,
     data: errors.length === 0 ? {
       name,
-      price: finalPrice,
+      price: Number((buyingPrice * 1.4).toFixed(2)), // Strictly enforce 1.4x markup
       buyingPrice,
       batchNumber,
       stock: Math.floor(stock),

@@ -5,11 +5,11 @@ import { faCircleCheck, faDownload, faFileArrowUp, faFileCircleXmark, faFileImpo
 import api from '../utils/api';
 import AppIcon from '../components/common/AppIcon';
 
-const TEMPLATE_HEADERS = ['#', 'Product Name', 'Quantity', 'Batch Number', 'Expiry Date', 'Buying Price (KES)', 'Selling Price (KES)'];
+const TEMPLATE_HEADERS = ['#', 'Product Name', 'Quantity', 'Batch Number', 'Expiry Date', 'Buying Price (KES)'];
 const SAMPLE_DATA = [
-  [1, 'Paracetamol 500mg', 100, 'BT2026001', '31/Dec/2026', 4.0, 5.5],
-  [2, 'Amoxicillin 250mg', 50, 'BT2026002', '30/Jun/2026', 9.5, 12.0],
-  [3, 'Ibuprofen 400mg', 75, 'BT2026003', '15/Sep/2025', 6.8, 8.75],
+  [1, 'Paracetamol 500mg', 100, 'BT2026001', '31/Dec/2026', 4.0],
+  [2, 'Amoxicillin 250mg', 50, 'BT2026002', '30/Jun/2026', 9.5],
+  [3, 'Ibuprofen 400mg', 75, 'BT2026003', '15/Sep/2025', 6.8],
 ];
 
 export default function ImportPage() {
@@ -87,7 +87,7 @@ export default function ImportPage() {
                 <tr><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}><code style={{ background: 'var(--gray-100)', padding: '1px 6px', borderRadius: 4 }}>Batch Number</code></td><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}>Text</td><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}>Required, non-empty</td></tr>
                 <tr><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}><code style={{ background: 'var(--gray-100)', padding: '1px 6px', borderRadius: 4 }}>Expiry Date</code></td><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}>Date</td><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}>Required, format <code style={{ background: 'var(--gray-100)', padding: '1px 6px', borderRadius: 4 }}>dd/mmm/yyyy</code> (e.g. 31/Mar/2026)</td></tr>
                 <tr><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}><code style={{ background: 'var(--gray-100)', padding: '1px 6px', borderRadius: 4 }}>Buying Price (KES)</code></td><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}>Number</td><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}>Required, greater than 0</td></tr>
-                <tr><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}><code style={{ background: 'var(--gray-100)', padding: '1px 6px', borderRadius: 4 }}>Selling Price (KES)</code></td><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}>Number</td><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}>Required, greater than 0</td></tr>
+                <tr><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}><code style={{ background: 'var(--gray-100)', padding: '1px 6px', borderRadius: 4 }}>Selling Price (KES)</code></td><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}>Number</td><td style={{ padding: '8px', borderBottom: '1px solid var(--gray-100)' }}><strong>Optional</strong>: Auto-calculated as Buying x 1.4</td></tr>
               </tbody>
             </table>
           </div>
