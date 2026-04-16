@@ -26,12 +26,12 @@ const getNavigationItems = (userRole) => {
     { path: '/inventory', icon: faBoxesStacked, label: 'Inventory' },
     { path: '/billing', icon: faFileInvoiceDollar, label: 'Billing' },
     { path: '/sales', icon: faMoneyBillTrendUp, label: 'Sales History' },
+    { path: '/import', icon: faFileImport, label: 'Bulk Import' },
   ];
 
   if (userRole === 'admin') {
     return [
       ...baseNav,
-      { path: '/import', icon: faFileImport, label: 'Bulk Import' },
       { path: '/reports', icon: faChartLine, label: 'Reports & Analytics' },
       { path: '/users', icon: faGear, label: 'User Management' },
     ];
@@ -171,7 +171,7 @@ const AppLayout = ({ theme, setTheme }) => {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/billing" element={<BillingPage />} />
             <Route path="/sales" element={<SalesPage />} />
-            <Route path="/import" element={user?.role === 'admin' ? <ImportPage /> : <Navigate to="/" />} />
+            <Route path="/import" element={<ImportPage />} />
             <Route path="/reports" element={user?.role === 'admin' ? <ReportsPage /> : <Navigate to="/" />} />
             <Route path="/users" element={user?.role === 'admin' ? <UsersManagementPage /> : <Navigate to="/" />} />
             <Route
