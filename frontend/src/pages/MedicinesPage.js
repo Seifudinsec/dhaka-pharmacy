@@ -5,6 +5,7 @@ import api from '../utils/api';
 import { format } from 'date-fns';
 import AppIcon from '../components/common/AppIcon';
 import { useAuth } from '../context/AuthContext';
+import useDebounce from '../hooks/useDebounce';
 
 const EMPTY_FORM = { name: '', price: '', buyingPrice: '', batchNumber: '', stock: '', expiryDate: '' };
 
@@ -173,15 +174,13 @@ export default function MedicinesPage() {
   const isAdmin = user?.role === 'admin';
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('all');
-  const [statusTab, setStatusTab] = useState('active');
-  const [modal, setModal] = useState(null); // { type: 'add'|'edit'|'deactivate'|'reactivate', medicine? }
-  const [selectedIds, setSelectedIds] = useState([]);
   const [bulkDeactivating, setBulkDeactivating] = useState(false);
   const searchRef = useRef();
 
-  const fetchMedicines = useCallback(async (q = search, f = filter, s = statusTab) => {
+  // Debounce search term to prevent flickering/glitches
+  const debouncedSearch = useDebounce(search, 300);
+
+  const fetchMedicines = useCallback(async (q = debouncedSearch, f = filter, s = statusTab) => {
     setLoading(true);
     try {
       const params = { limit: 200, status: s };
@@ -195,7 +194,7 @@ export default function MedicinesPage() {
     } catch (err) {
       toast.error('Failed to load medicines.');
     } finally { setLoading(false); }
-  }, [search, filter, statusTab]);
+  }, [debouncedSearch, filter, statusTab]);
 
   useEffect(() => { fetchMedicines(); }, [fetchMedicines]);
 
@@ -212,9 +211,8 @@ export default function MedicinesPage() {
   }, [fetchMedicines]);
 
   const handleSearch = (e) => {
-    const val = e.target.value;
-    setSearch(val);
-    fetchMedicines(val, filter, statusTab);
+    setSearch(e.target.value);
+    // Removed direct fetch call here; useEffect with debouncedSearch handles it now
   };
 
   const handleFilter = (f) => {

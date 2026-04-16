@@ -2,6 +2,8 @@ const express = require('express');
 const { protect, adminOnly } = require('../middleware/auth');
 const Sale = require('../models/Sale');
 const Medicine = require('../models/Medicine');
+const Return = require('../models/Return');
+const XLSX = require('xlsx');
 const router = express.Router();
 
 // Apply authentication and admin-only middleware to all routes
@@ -12,62 +14,79 @@ router.use(adminOnly);
 router.get('/analytics', async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999); // Include end date
+    const start = new Date(startDate || new Date().setDate(new Date().getDate() - 30));
+    const end = new Date(endDate || new Date());
+    end.setHours(23, 59, 59, 999);
 
-    // Get sales data for the period
-    const sales = await Sale.find({
-      createdAt: { $gte: start, $lte: end }
-    }).populate('servedBy', 'username');
+    // Get sales AND returns for the period
+    const [sales, returns] = await Promise.all([
+      Sale.find({ createdAt: { $gte: start, $lte: end } }).populate('servedBy', 'username'),
+      Return.find({ createdAt: { $gte: start, $lte: end } })
+    ]);
 
-    // Calculate daily, weekly, monthly data
     const dailyRevenue = [];
     const dailyProfit = [];
     const dailySales = [];
 
-    // Create date range array
     const dateRange = [];
-    const currentDate = new Date(start);
+    let currentDate = new Date(start);
     while (currentDate <= end) {
       dateRange.push(new Date(currentDate));
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    // Calculate metrics for each day
+    // Daily buckets
     for (const date of dateRange) {
-      const dayStart = new Date(date);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(date);
-      dayEnd.setHours(23, 59, 59, 999);
+      const dStart = new Date(date).setHours(0,0,0,0);
+      const dEnd = new Date(date).setHours(23,59,59,999);
 
-      const daySales = sales.filter(sale => 
-        sale.createdAt >= dayStart && sale.createdAt <= dayEnd
-      );
+      const dSales = sales.filter(s => s.createdAt >= dStart && s.createdAt <= dEnd);
+      const dReturns = returns.filter(r => r.createdAt >= dStart && r.createdAt <= dEnd);
 
-      const revenue = daySales.reduce((sum, sale) => sum + sale.total, 0);
-      const profit = daySales.reduce((sum, sale) => sum + (sale.profit || 0), 0);
+      const revenue = dSales.reduce((sum, s) => sum + s.total, 0) - dReturns.reduce((sum, r) => sum + r.totalRefund, 0);
+      const profit = dSales.reduce((sum, s) => sum + (s.profit || 0), 0) - dReturns.reduce((sum, r) => sum + r.totalProfitLoss, 0);
 
-      dailyRevenue.push(revenue);
-      dailyProfit.push(profit);
-      dailySales.push(daySales.length);
+      dailyRevenue.push(Number(revenue.toFixed(2)));
+      dailyProfit.push(Number(profit.toFixed(2)));
+      dailySales.push(dSales.length);
     }
 
-    // Get top selling medicines
+    // Weekly/Monthly aggregation logic
+    const weeklyRevenue = [];
+    const monthlyRevenue = [];
+    
+    // Simple 7-day chunking for weekly trend
+    for (let i = 0; i < dailyRevenue.length; i += 7) {
+      weeklyRevenue.push(dailyRevenue.slice(i, i + 7).reduce((a, b) => a + b, 0));
+    }
+    
+    // Simple 30-day chunking for monthly trend
+    for (let i = 0; i < dailyRevenue.length; i += 30) {
+      monthlyRevenue.push(dailyRevenue.slice(i, i + 30).reduce((a, b) => a + b, 0));
+    }
+
     const medicineSales = {};
     sales.forEach(sale => {
       sale.items.forEach(item => {
-        if (!medicineSales[item.medicineName]) {
-          medicineSales[item.medicineName] = {
-            name: item.medicineName,
-            unitsSold: 0,
-            revenue: 0,
-            profit: 0
-          };
+        const medName = item.medicineName;
+        if (!medicineSales[medName]) {
+          medicineSales[medName] = { name: medName, unitsSold: 0, revenue: 0, profit: 0 };
         }
-        medicineSales[item.medicineName].unitsSold += item.quantity;
-        medicineSales[item.medicineName].revenue += item.total;
-        medicineSales[item.medicineName].profit += (item.profit || 0);
+        medicineSales[medName].unitsSold += item.quantity;
+        medicineSales[medName].revenue += item.total;
+        medicineSales[medName].profit += (item.profit || 0);
+      });
+    });
+
+    // Subtract quantities from returns in the medicine sales list
+    returns.forEach(ret => {
+      ret.items.forEach(item => {
+        const medName = item.medicineName;
+        if (medicineSales[medName]) {
+          medicineSales[medName].unitsSold -= item.quantity;
+          medicineSales[medName].revenue -= item.subtotal;
+          medicineSales[medName].profit -= item.profit;
+        }
       });
     });
 
@@ -79,13 +98,11 @@ router.get('/analytics', async (req, res) => {
         profitMargin: med.revenue > 0 ? (med.profit / med.revenue) * 100 : 0
       }));
 
-    // Get low performing medicines (sold less than 5 units in period)
     const lowPerformingMedicines = Object.values(medicineSales)
-      .filter(med => med.unitsSold < 5)
+      .filter(med => med.unitsSold < 10) // Changed from 5 to 10 for better tracking
       .sort((a, b) => a.unitsSold - b.unitsSold)
       .slice(0, 10);
 
-    // Add stock status to low performing medicines
     for (const med of lowPerformingMedicines) {
       const medicine = await Medicine.findOne({ name: med.name });
       if (medicine) {
@@ -96,50 +113,48 @@ router.get('/analytics', async (req, res) => {
       }
     }
 
-    // Calculate summary metrics
-    const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
-    const totalProfit = sales.reduce((sum, sale) => sum + (sale.profit || 0), 0);
+    const totalSalesRevenue = sales.reduce((sum, s) => sum + s.total, 0);
+    const totalReturnRefunds = returns.reduce((sum, r) => sum + r.totalRefund, 0);
+    const totalRevenue = totalSalesRevenue - totalReturnRefunds;
+
+    const totalSalesProfit = sales.reduce((sum, s) => sum + (s.profit || 0), 0);
+    const totalReturnProfitLoss = returns.reduce((sum, r) => sum + r.totalProfitLoss, 0);
+    const totalProfit = totalSalesProfit - totalReturnProfitLoss;
+
     const totalSales = sales.length;
     const averageSaleValue = totalSales > 0 ? totalRevenue / totalSales : 0;
     const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
-    // Calculate growth rate (compare with previous period)
-    const previousPeriodStart = new Date(start);
-    previousPeriodStart.setDate(previousPeriodStart.getDate() - (dateRange.length - 1));
-    const previousPeriodEnd = new Date(end);
-    previousPeriodEnd.setDate(previousPeriodEnd.getDate() - (dateRange.length - 1));
+    // Growth Rate
+    const periodDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+    const prevStart = new Date(start); prevStart.setDate(prevStart.getDate() - periodDays);
+    const prevEnd = new Date(start); prevEnd.setSeconds(prevEnd.getSeconds() - 1);
 
-    const previousSales = await Sale.find({
-      createdAt: { $gte: previousPeriodStart, $lte: previousPeriodEnd }
-    });
-
-    const previousRevenue = previousSales.reduce((sum, sale) => sum + sale.total, 0);
-    const growthRate = previousRevenue > 0 ? ((totalRevenue - previousRevenue) / previousRevenue) * 100 : 0;
+    const prevSales = await Sale.find({ createdAt: { $gte: prevStart, $lte: prevEnd } });
+    const prevRevenue = prevSales.reduce((sum, s) => sum + s.total, 0);
+    const growthRate = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
 
     res.json({
       success: true,
       data: {
-        revenue: { daily: dailyRevenue, weekly: [], monthly: [] },
+        revenue: { daily: dailyRevenue, weekly: weeklyRevenue, monthly: monthlyRevenue },
         profit: { daily: dailyProfit, weekly: [], monthly: [] },
         sales: { daily: dailySales, weekly: [], monthly: [] },
         topMedicines,
         lowPerformingMedicines,
         summary: {
-          totalRevenue,
-          totalProfit,
+          totalRevenue: Number(totalRevenue.toFixed(2)),
+          totalProfit: Number(totalProfit.toFixed(2)),
           totalSales,
-          averageSaleValue,
-          profitMargin,
-          growthRate
+          averageSaleValue: Number(averageSaleValue.toFixed(2)),
+          profitMargin: Number(profitMargin.toFixed(2)),
+          growthRate: Number(growthRate.toFixed(2))
         }
       }
     });
   } catch (error) {
     console.error('Reports analytics error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to generate analytics report'
-    });
+    res.status(500).json({ success: false, message: 'Failed to generate analytics report' });
   }
 });
 
@@ -151,45 +166,48 @@ router.get('/export', async (req, res) => {
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
 
-    const sales = await Sale.find({
-      createdAt: { $gte: start, $lte: end }
-    }).populate('servedBy', 'username');
+    const sales = await Sale.find({ createdAt: { $gte: start, $lte: end } }).populate('servedBy', 'username');
 
     if (format === 'csv') {
-      // Generate CSV
-      const csvHeader = 'Date,Transaction ID,Items,Total,Profit,Served By\n';
+      const csvHeader = 'Date,Transaction ID,Items,Total,Profit,Served By,Status\n';
       const csvData = sales.map(sale => {
-        const items = sale.items.map(item => `${item.medicineName}×${item.quantity}`).join(';');
-        return `${new Date(sale.createdAt).toISOString()},${sale._id},"${items}",${sale.total},${sale.profit || 0},${sale.servedBy?.username || 'N/A'}`;
+        const items = sale.items.map(item => `${item.medicineName}×${item.quantity}`).join('; ');
+        return `"${format(new Date(sale.createdAt), 'yyyy-MM-dd HH:mm')}",${sale._id},"${items}",${sale.total},${sale.profit || 0},"${sale.servedBy?.username || 'N/A'}",${sale.status || 'completed'}`;
       }).join('\n');
 
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', `attachment; filename="pharmacy-report-${startDate}-to-${endDate}.csv"`);
       res.send(csvHeader + csvData);
     } else if (format === 'xlsx') {
-      // For Excel export, we'd need a library like xlsx
-      // For now, return CSV format
-      const csvHeader = 'Date,Transaction ID,Items,Total,Profit,Served By\n';
-      const csvData = sales.map(sale => {
-        const items = sale.items.map(item => `${item.medicineName}×${item.quantity}`).join(';');
-        return `${new Date(sale.createdAt).toISOString()},${sale._id},"${items}",${sale.total},${sale.profit || 0},${sale.servedBy?.username || 'N/A'}`;
-      }).join('\n');
+      const reportData = sales.map(sale => ({
+        Date: new Date(sale.createdAt).toLocaleString(),
+        'Transaction ID': sale._id.toString(),
+        Items: sale.items.map(i => `${i.medicineName} (x${i.quantity})`).join(', '),
+        'Total (KES)': sale.total,
+        'Profit (KES)': sale.profit || 0,
+        'Served By': sale.servedBy?.username || 'N/A',
+        Status: sale.status || 'completed'
+      }));
 
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="pharmacy-report-${startDate}-to-${endDate}.csv"`);
-      res.send(csvHeader + csvData);
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(reportData);
+      
+      // Auto-size columns roughly
+      const wscols = [{ wch: 25 }, { wch: 25 }, { wch: 40 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+      ws['!cols'] = wscols;
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Sales Report');
+      
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="pharmacy-report-${startDate}-to-${endDate}.xlsx"`);
+      res.send(buf);
     } else {
-      res.status(400).json({
-        success: false,
-        message: 'Unsupported export format'
-      });
+      res.status(400).json({ success: false, message: 'Unsupported export format' });
     }
   } catch (error) {
     console.error('Export error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to export report'
-    });
+    res.status(500).json({ success: false, message: 'Failed to export report' });
   }
 });
 

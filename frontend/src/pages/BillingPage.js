@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { faCartShopping, faCheckCircle, faFileInvoiceDollar, faMagnifyingGlass, faPills, faXmark } from '@fortawesome/free-solid-svg-icons';
 import api from '../utils/api';
 import AppIcon from '../components/common/AppIcon';
+import useDebounce from '../hooks/useDebounce';
 
 export default function BillingPage() {
   const [medicines, setMedicines] = useState([]);
@@ -12,6 +13,8 @@ export default function BillingPage() {
   const [notes, setNotes] = useState('');
   const [processing, setProcessing] = useState(false);
   const [lastReceipt, setLastReceipt] = useState(null);
+
+  const debouncedSearch = useDebounce(search, 200); // Faster debounce for local filtering
 
   const fetchMedicines = useCallback(async () => {
     try {
@@ -26,9 +29,13 @@ export default function BillingPage() {
 
   useEffect(() => { fetchMedicines(); }, [fetchMedicines]);
 
+  useEffect(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    setFiltered(q ? medicines.filter(m => m.name.toLowerCase().includes(q)) : medicines);
+  }, [debouncedSearch, medicines]);
+
   const handleSearch = (q) => {
     setSearch(q);
-    setFiltered(q.trim() ? medicines.filter(m => m.name.toLowerCase().includes(q.toLowerCase())) : medicines);
   };
 
   const addToCart = (medicine) => {

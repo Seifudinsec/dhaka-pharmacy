@@ -6,6 +6,7 @@ import api from '../utils/api';
 import { format, differenceInDays } from 'date-fns';
 import MetricCard from '../components/common/MetricCard';
 import AppIcon from '../components/common/AppIcon';
+import useDebounce from '../hooks/useDebounce';
 
 export default function InventoryPage() {
   const [medicines, setMedicines] = useState([]);
@@ -14,6 +15,10 @@ export default function InventoryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState(searchParams.get('filter') || 'all');
   const [highlightId, setHighlightId] = useState(searchParams.get('highlight') || '');
+
+  // Debounce search to prevent glitching
+  const debouncedSearch = useDebounce(search, 300);
+
   useEffect(() => {
     const incomingHighlight = searchParams.get('highlight') || '';
     setHighlightId(incomingHighlight);
@@ -25,7 +30,7 @@ export default function InventoryPage() {
   }, [searchParams]);
 
 
-  const fetchMedicines = useCallback(async (q = search, f = filter) => {
+  const fetchMedicines = useCallback(async (q = debouncedSearch, f = filter) => {
     setLoading(true);
     try {
       const params = { limit: 500 };
@@ -35,7 +40,7 @@ export default function InventoryPage() {
       if (data.success) setMedicines(data.data);
     } catch { toast.error('Failed to load inventory.'); }
     finally { setLoading(false); }
-  }, [search, filter]);
+  }, [debouncedSearch, filter]);
 
   useEffect(() => { fetchMedicines(); }, [fetchMedicines]);
 
@@ -96,7 +101,7 @@ export default function InventoryPage() {
           <div className="search-box">
             <span className="search-icon"><AppIcon icon={faMagnifyingGlass} tone="muted" /></span>
             <input className="form-control" placeholder="Search medicines…" value={search}
-              onChange={e => { setSearch(e.target.value); fetchMedicines(e.target.value, filter); }} />
+              onChange={e => setSearch(e.target.value)} />
           </div>
           <div className="filter-tabs">
             {[['all', 'All'], ['in_stock', 'In Stock'], ['low_stock', 'Low Stock'], ['out_of_stock', 'Out of Stock'], ['expired', 'Expired']].map(([val, label]) => (

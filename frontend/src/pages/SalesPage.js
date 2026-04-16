@@ -6,6 +6,7 @@ import api from '../utils/api';
 import { format } from 'date-fns';
 import MetricCard from '../components/common/MetricCard';
 import AppIcon from '../components/common/AppIcon';
+import useDebounce from '../hooks/useDebounce';
 
 export default function SalesPage() {
   const { user } = useAuth();
@@ -14,9 +15,12 @@ export default function SalesPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({});
-  const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [expanded, setExpanded] = useState(null);
+
+  const debouncedStart = useDebounce(startDate, 500);
+  const debouncedEnd = useDebounce(endDate, 500);
+
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [selectedSale, setSelectedSale] = useState(null);
   const [returnItems, setReturnItems] = useState([]);
@@ -27,8 +31,8 @@ export default function SalesPage() {
     setLoading(true);
     try {
       const params = { page: p, limit: 20 };
-      if (startDate) params.startDate = startDate;
-      if (endDate) params.endDate = endDate;
+      if (debouncedStart) params.startDate = debouncedStart;
+      if (debouncedEnd) params.endDate = debouncedEnd;
       const { data } = await api.get('/sales', { params });
       if (data.success) {
         setSales(data.data);
@@ -38,7 +42,7 @@ export default function SalesPage() {
       }
     } catch { toast.error('Failed to load sales.'); }
     finally { setLoading(false); }
-  }, [startDate, endDate]);
+  }, [debouncedStart, debouncedEnd]);
 
   useEffect(() => { fetchSales(1); }, [fetchSales]);
 
