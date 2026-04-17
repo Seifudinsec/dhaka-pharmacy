@@ -16,7 +16,6 @@ const COL_W = [
 ];
 const BAR_H = [65, 45, 80, 55, 70, 40, 60];
 
-/** Animated shimmer block */
 const Bone = ({ width = "80%", height = 14, style = {} }) => (
   <div
     className="skeleton-shimmer"
@@ -25,7 +24,6 @@ const Bone = ({ width = "80%", height = 14, style = {} }) => (
   />
 );
 
-/** Full-width skeleton table that mimics the app's data tables */
 export function SkeletonTable({ rows = 6, cols = 5 }) {
   return (
     <table
@@ -69,7 +67,6 @@ export function SkeletonTable({ rows = 6, cols = 5 }) {
   );
 }
 
-/** Skeleton for a metric/summary card row (Inventory, Dashboard, Sales) */
 export function SkeletonMetricRow({
   count = 4,
   gridClassName = "inventory-summary-grid",
@@ -101,7 +98,6 @@ export function SkeletonMetricRow({
   );
 }
 
-/** Skeleton for Reports summary cards */
 export function SkeletonSummaryCards({ count = 4 }) {
   return (
     <div className="summary-cards" aria-hidden="true">
@@ -126,7 +122,6 @@ export function SkeletonSummaryCards({ count = 4 }) {
   );
 }
 
-/** Skeleton for a chart container */
 export function SkeletonChart() {
   return (
     <div style={{ padding: "0 4px" }} aria-hidden="true">
@@ -156,7 +151,6 @@ export function SkeletonChart() {
   );
 }
 
-/** Skeleton for a generic card */
 export function SkeletonCard({ lines = 3, showHeader = true }) {
   return (
     <div className="card" aria-hidden="true">

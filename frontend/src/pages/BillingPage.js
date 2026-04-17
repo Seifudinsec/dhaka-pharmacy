@@ -17,14 +17,13 @@ import { SkeletonTable } from "../components/common/SkeletonLoaders";
 export default function BillingPage() {
   const [medicines, setMedicines] = useState([]);
   const [search, setSearch] = useState("");
-  const [filtered, setFiltered] = useState([]);
   const [cart, setCart] = useState([]);
   const [notes, setNotes] = useState("");
   const [processing, setProcessing] = useState(false);
   const [lastReceipt, setLastReceipt] = useState(null);
   const [fetchLoading, setFetchLoading] = useState(false);
 
-  const debouncedSearch = useDebounce(search, 200); // Faster debounce for local filtering
+  const debouncedSearch = useDebounce(search, 200);
   const showFetchLoader = useDelayedLoading(fetchLoading);
 
   const fetchMedicines = useCallback(async () => {
@@ -33,11 +32,7 @@ export default function BillingPage() {
       const { data } = await api.get("/medicines", {
         params: { limit: 500, status: "active" },
       });
-      if (data.success) {
-        const allActive = data.data || [];
-        setMedicines(allActive);
-        setFiltered(allActive);
-      }
+      if (data.success) setMedicines(data.data || []);
     } catch {
       toast.error("Failed to load medicines.");
     } finally {
@@ -49,27 +44,17 @@ export default function BillingPage() {
     fetchMedicines();
   }, [fetchMedicines]);
 
-  useEffect(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    setFiltered(
-      q ? medicines.filter((m) => m.name.toLowerCase().includes(q)) : medicines,
-    );
-  }, [debouncedSearch, medicines]);
-
-  const handleSearch = (q) => {
-    setSearch(q);
-  };
+  const filtered = debouncedSearch.trim()
+    ? medicines.filter((m) =>
+        m.name.toLowerCase().includes(debouncedSearch.toLowerCase()),
+      )
+    : medicines;
 
   const addToCart = (medicine) => {
-    const expired = new Date(medicine.expiryDate) <= new Date();
-    if (expired) {
-      toast.error(`"${medicine.name}" is expired and cannot be sold.`);
-      return;
-    }
-    if (medicine.stock <= 0) {
-      toast.error(`"${medicine.name}" is out of stock.`);
-      return;
-    }
+    const isExpired = new Date(medicine.expiryDate) <= new Date();
+    if (isExpired) return toast.error(`"${medicine.name}" is expired.`);
+    if (medicine.stock <= 0)
+      return toast.error(`"${medicine.name}" is out of stock.`);
 
     setCart((prev) => {
       const exists = prev.find((i) => i._id === medicine._id);
@@ -101,16 +86,8 @@ export default function BillingPage() {
     });
   };
 
-  const removeFromCart = (id) =>
-    setCart((prev) => prev.filter((i) => i._id !== id));
-
-  const total = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
-
   const handleSale = async () => {
-    if (!cart.length) {
-      toast.error("Cart is empty.");
-      return;
-    }
+    if (!cart.length) return toast.error("Cart is empty.");
     setProcessing(true);
     try {
       const { data } = await api.post("/sales", {
@@ -123,31 +100,23 @@ export default function BillingPage() {
         setCart([]);
         setNotes("");
         fetchMedicines();
-
-        // Notify other pages (Dashboard, Reports, etc.) to refresh their data
         window.dispatchEvent(
-          new CustomEvent("dataChanged", {
-            detail: { type: "sale", timestamp: Date.now() },
-          }),
+          new CustomEvent("dataChanged", { detail: { type: "sale" } }),
         );
-
-        if (data.warnings?.length) {
-          data.warnings.forEach((w) => toast.error(w, { duration: 5000 }));
-        }
+        if (data.warnings?.length) data.warnings.forEach((w) => toast.error(w));
       }
     } catch (err) {
-      const msg = err.response?.data?.message || "Failed to process sale.";
-      toast.error(msg);
-      const errs = err.response?.data?.errors || [];
-      errs.forEach((e) => toast.error(e, { duration: 5000 }));
+      toast.error(err.response?.data?.message || "Sale failed.");
+      (err.response?.data?.errors || []).forEach((e) => toast.error(e));
     } finally {
       setProcessing(false);
     }
   };
 
+  const total = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
+
   return (
     <div className="billing-layout">
-      {/* Medicine selector */}
       <div className="card">
         <div className="card-header">
           <h2>
@@ -155,102 +124,90 @@ export default function BillingPage() {
             Select Medicines
           </h2>
         </div>
-        <div
-          style={{
-            padding: "14px 20px",
-            borderBottom: "1px solid var(--gray-100)",
-          }}
-        >
-          <div className="search-box" style={{ width: "100%" }}>
-            <span className="search-icon">
-              <AppIcon icon={faMagnifyingGlass} tone="muted" />
-            </span>
-            <input
-              className="form-control"
-              placeholder="Search by name…"
-              value={search}
-              onChange={(e) => handleSearch(e.target.value)}
-              style={{ width: "100%" }}
-            />
+        <div className="card-body p-0">
+          <div className="p-3 border-bottom">
+            <div className="search-box w-100">
+              <span className="search-icon">
+                <AppIcon icon={faMagnifyingGlass} tone="muted" />
+              </span>
+              <input
+                className="form-control w-100"
+                placeholder="Search medicines..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
           </div>
-        </div>
-        <div
-          className="table-wrap"
-          style={{ maxHeight: 500, overflowY: "auto" }}
-        >
-          {showFetchLoader ? (
-            <div className="loader-fade-in" style={{ padding: 16 }}>
-              <SkeletonTable rows={6} cols={4} />
-            </div>
-          ) : !filtered.length ? (
-            <div className="empty-state">
-              <div className="empty-icon">
-                <AppIcon icon={faPills} size="xl" tone="muted" />
+          <div className="table-wrap" style={{ maxHeight: 500 }}>
+            {showFetchLoader ? (
+              <div className="p-3">
+                <SkeletonTable rows={6} cols={4} />
               </div>
-              <h3>No medicines available</h3>
-              <p>All medicines may be out of stock or expired.</p>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Medicine</th>
-                  <th>Price</th>
-                  <th>Stock</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((m) => {
-                  const inCart = cart.find((i) => i._id === m._id);
-                  const isExpired = new Date(m.expiryDate) <= new Date();
-                  const isOutOfStock = m.stock <= 0;
-                  const isSellable = !isExpired && !isOutOfStock;
-                  return (
-                    <tr key={m._id}>
-                      <td>
-                        <strong>{m.name}</strong>
-                      </td>
-                      <td>KES {Number(m.price).toFixed(2)}</td>
-                      <td>
-                        {isExpired ? (
-                          <span className="badge badge-red">Expired</span>
-                        ) : isOutOfStock ? (
-                          <span className="badge badge-red">Out of stock</span>
-                        ) : (
-                          <span
-                            className={`badge ${m.stock < 10 ? "badge-amber" : "badge-green"}`}
+            ) : !filtered.length ? (
+              <div className="empty-state">
+                <AppIcon icon={faPills} size="xl" tone="muted" />
+                <h3>No medicines found</h3>
+              </div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Medicine</th>
+                    <th>Price</th>
+                    <th>Stock</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((m) => {
+                    const inCart = cart.find((i) => i._id === m._id);
+                    const isExpired = new Date(m.expiryDate) <= new Date();
+                    const isOutOfStock = m.stock <= 0;
+                    return (
+                      <tr key={m._id}>
+                        <td>
+                          <strong>{m.name}</strong>
+                        </td>
+                        <td>KES {Number(m.price).toFixed(2)}</td>
+                        <td>
+                          {isExpired ? (
+                            <span className="badge badge-red">Expired</span>
+                          ) : isOutOfStock ? (
+                            <span className="badge badge-red">
+                              Out of stock
+                            </span>
+                          ) : (
+                            <span
+                              className={`badge ${m.stock < 10 ? "badge-amber" : "badge-green"}`}
+                            >
+                              {m.stock}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => addToCart(m)}
+                            disabled={
+                              isExpired ||
+                              isOutOfStock ||
+                              inCart?.qty >= m.stock
+                            }
                           >
-                            {m.stock}
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        <button
-                          className="btn btn-primary btn-sm"
-                          onClick={() => addToCart(m)}
-                          disabled={!isSellable || inCart?.qty >= m.stock}
-                        >
-                          {isExpired
-                            ? "Expired"
-                            : isOutOfStock
-                              ? "Out of stock"
-                              : inCart
-                                ? `+1 (${inCart.qty})`
-                                : "+ Add"}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+                            {inCart ? `+1 (${inCart.qty})` : "+ Add"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Cart / Bill */}
-      <div>
+      <div className="billing-sidebar">
         <div className="card">
           <div className="card-header">
             <h2>
@@ -265,25 +222,15 @@ export default function BillingPage() {
                 className="btn btn-secondary btn-sm"
                 onClick={() => setCart([])}
               >
-                Clear All
+                Clear
               </button>
             )}
           </div>
-          <div className="card-body" style={{ minHeight: 200 }}>
+          <div className="card-body min-h-200">
             {!cart.length ? (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "30px 0",
-                  color: "var(--gray-400)",
-                }}
-              >
-                <div style={{ fontSize: 32 }}>
-                  <AppIcon icon={faCartShopping} size="xl" tone="muted" />
-                </div>
-                <p style={{ marginTop: 8, fontSize: 14 }}>
-                  Add medicines to start billing
-                </p>
+              <div className="text-center py-5 text-muted">
+                <AppIcon icon={faCartShopping} size="xl" />
+                <p className="mt-2">Cart is empty</p>
               </div>
             ) : (
               cart.map((item) => (
@@ -291,7 +238,7 @@ export default function BillingPage() {
                   <div className="bill-item-info">
                     <div className="bill-item-name">{item.name}</div>
                     <div className="bill-item-price">
-                      KES {item.price.toFixed(2)} each
+                      KES {item.price.toFixed(2)}
                     </div>
                   </div>
                   <div className="bill-item-qty">
@@ -309,25 +256,14 @@ export default function BillingPage() {
                       +
                     </button>
                   </div>
-                  <div
-                    style={{
-                      minWidth: 70,
-                      textAlign: "right",
-                      fontWeight: 700,
-                      fontSize: 14,
-                    }}
-                  >
+                  <div className="bill-item-subtotal">
                     KES {(item.price * item.qty).toFixed(2)}
                   </div>
                   <button
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      color: "var(--gray-400)",
-                      fontSize: 16,
-                    }}
-                    onClick={() => removeFromCart(item._id)}
+                    className="btn-icon text-muted"
+                    onClick={() =>
+                      setCart((c) => c.filter((i) => i._id !== item._id))
+                    }
                   >
                     <AppIcon icon={faXmark} />
                   </button>
@@ -337,62 +273,41 @@ export default function BillingPage() {
           </div>
 
           {cart.length > 0 && (
-            <>
-              <div style={{ padding: "0 20px 16px" }}>
-                <label className="form-label">Notes (optional)</label>
-                <input
-                  className="form-control"
-                  placeholder="e.g. Patient name, prescription ID…"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
-              </div>
-              <div
-                style={{
-                  padding: "16px 20px",
-                  borderTop: "2px dashed var(--gray-200)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
+            <div className="p-3 border-top">
+              <label className="form-label">Notes</label>
+              <input
+                className="form-control mb-3"
+                placeholder="Notes..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+              <div className="d-flex justify-content-between align-items-center pt-3 border-top-dashed">
                 <div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--gray-500)",
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Total Amount
+                  <div className="text-xs text-muted font-bold uppercase">
+                    Total
                   </div>
                   <div className="bill-total">KES {total.toFixed(2)}</div>
                 </div>
                 <button
-                  className="btn btn-success"
+                  className="btn btn-success px-4 py-2"
                   onClick={handleSale}
                   disabled={processing}
-                  style={{ padding: "10px 22px" }}
                 >
                   {processing ? (
-                    <>
-                      <span className="spinner spinner-sm" /> Processing...
-                    </>
+                    <span className="spinner spinner-sm" />
                   ) : (
                     <>
-                      <AppIcon icon={faCheckCircle} /> Confirm Sale
+                      <AppIcon icon={faCheckCircle} /> Confirm
                     </>
                   )}
                 </button>
               </div>
-            </>
+            </div>
           )}
         </div>
 
-        {/* Last receipt */}
         {lastReceipt && (
-          <div className="card" style={{ marginTop: 16 }}>
+          <div className="card mt-3">
             <div className="card-header">
               <h2>
                 <AppIcon
@@ -401,27 +316,16 @@ export default function BillingPage() {
                 />{" "}
                 Last Receipt
               </h2>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => setLastReceipt(null)}
-              >
-                <AppIcon icon={faXmark} /> Dismiss
+              <button className="btn-icon" onClick={() => setLastReceipt(null)}>
+                <AppIcon icon={faXmark} />
               </button>
             </div>
             <div className="card-body">
-              <div className="alert alert-success" style={{ marginBottom: 12 }}>
-                Sale recorded successfully!
-              </div>
+              <div className="alert alert-success mb-2">Sale successful!</div>
               {lastReceipt.cartSnapshot.map((i) => (
                 <div
                   key={i._id}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "6px 0",
-                    borderBottom: "1px solid var(--gray-100)",
-                    fontSize: 13,
-                  }}
+                  className="d-flex justify-content-between text-sm py-1 border-bottom"
                 >
                   <span>
                     {i.name} ×{i.qty}
@@ -429,17 +333,9 @@ export default function BillingPage() {
                   <span>KES {(i.price * i.qty).toFixed(2)}</span>
                 </div>
               ))}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginTop: 10,
-                  fontWeight: 800,
-                  fontSize: 15,
-                }}
-              >
+              <div className="d-flex justify-content-between mt-2 font-bold text-lg">
                 <span>Total</span>
-                <span style={{ color: "var(--secondary)" }}>
+                <span className="text-secondary">
                   KES {lastReceipt.total.toFixed(2)}
                 </span>
               </div>

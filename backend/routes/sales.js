@@ -27,17 +27,18 @@ router.get("/", async (req, res) => {
     const safeLimit = Math.max(1, Math.min(200, Number(limit) || 20));
     const skip = (safePage - 1) * safeLimit;
 
-    const total = await Sale.countDocuments(query);
-    const sales = await Sale.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(safeLimit)
-      .populate("servedBy", "username")
-      .populate("items.medicine", "name");
-
-    const revenue = await Sale.aggregate([
-      { $match: query },
-      { $group: { _id: null, total: { $sum: "$total" } } },
+    const [total, sales, revenue] = await Promise.all([
+      Sale.countDocuments(query),
+      Sale.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(safeLimit)
+        .populate("servedBy", "username")
+        .populate("items.medicine", "name"),
+      Sale.aggregate([
+        { $match: query },
+        { $group: { _id: null, total: { $sum: "$total" } } },
+      ]),
     ]);
 
     res.json({
@@ -52,7 +53,6 @@ router.get("/", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get sales error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch sales." });
   }
 });
@@ -66,7 +66,7 @@ router.post("/", async (req, res) => {
   try {
     const { items, notes } = req.body;
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
+    if (!items?.length) {
       return res.status(400).json({
         success: false,
         message: "Sale must contain at least one item.",
@@ -80,41 +80,34 @@ router.post("/", async (req, res) => {
 
       for (const rawItem of items) {
         const { medicineId, quantity } = rawItem || {};
-        const qty = Number(quantity);
+        const finalQty = Math.floor(Number(quantity));
 
-        if (!medicineId || Number.isNaN(qty) || qty < 1) {
-          warnings.push(
-            `Invalid item: medicineId=${medicineId}, quantity=${quantity}`,
-          );
+        if (!medicineId || isNaN(finalQty) || finalQty < 1) {
+          warnings.push(`Invalid item: ID=${medicineId}, Qty=${quantity}`);
           continue;
         }
 
-        const finalQty = Math.floor(qty);
-
         const medicine = await Medicine.findById(medicineId).session(session);
         if (!medicine) {
-          warnings.push(`Medicine with ID "${medicineId}" not found.`);
+          warnings.push(`Medicine not found: ${medicineId}`);
           continue;
         }
 
         if (medicine.status === "inactive") {
-          warnings.push(`"${medicine.name}" is inactive and cannot be sold.`);
+          warnings.push(`"${medicine.name}" is inactive.`);
           continue;
         }
 
         if (new Date() > new Date(medicine.expiryDate)) {
-          warnings.push(`"${medicine.name}" is expired and cannot be sold.`);
+          warnings.push(`"${medicine.name}" is expired.`);
           continue;
         }
 
         if (medicine.stock < finalQty) {
-          warnings.push(
-            `Insufficient stock for "${medicine.name}". Available: ${medicine.stock}, requested: ${finalQty}.`,
-          );
+          warnings.push(`Insufficient stock for "${medicine.name}".`);
           continue;
         }
 
-        // Atomic stock deduction within transaction
         const stockUpdate = await Medicine.updateOne(
           { _id: medicine._id, stock: { $gte: finalQty } },
           { $inc: { stock: -finalQty } },
@@ -122,9 +115,7 @@ router.post("/", async (req, res) => {
         );
 
         if (!stockUpdate.modifiedCount) {
-          warnings.push(
-            `Failed to deduct stock for "${medicine.name}". Please retry.`,
-          );
+          warnings.push(`Failed to update stock for "${medicine.name}".`);
           continue;
         }
 
@@ -149,10 +140,8 @@ router.post("/", async (req, res) => {
         totalProfit += itemProfit;
       }
 
-      if (saleItems.length === 0) {
-        const err = new Error("NO_VALID_ITEMS");
-        err.code = "NO_VALID_ITEMS";
-        throw err;
+      if (!saleItems.length) {
+        throw { code: "NO_VALID_ITEMS" };
       }
 
       const [sale] = await Sale.create(
@@ -162,7 +151,7 @@ router.post("/", async (req, res) => {
             total: Number(totalAmount.toFixed(2)),
             totalProfit: Number(totalProfit.toFixed(2)),
             servedBy: req.user._id,
-            notes: notes ? String(notes).trim().slice(0, 500) : undefined,
+            notes: notes?.trim().slice(0, 500),
           },
         ],
         { session },
@@ -171,7 +160,7 @@ router.post("/", async (req, res) => {
       createdSale = sale;
     });
 
-    return res.status(201).json({
+    res.status(201).json({
       success: true,
       message: "Sale recorded successfully.",
       data: createdSale,
@@ -181,22 +170,11 @@ router.post("/", async (req, res) => {
     if (error.code === "NO_VALID_ITEMS") {
       return res.status(400).json({
         success: false,
-        message: "Sale failed.",
-        errors: warnings.length
-          ? warnings
-          : ["No valid sale items were provided."],
+        message: "Sale failed: No valid items.",
+        errors: warnings,
       });
     }
-
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid medicine ID in sale.",
-      });
-    }
-
-    console.error("Create sale error:", error);
-    return res
+    res
       .status(500)
       .json({ success: false, message: "Failed to process sale." });
   } finally {
@@ -212,38 +190,30 @@ router.get("/today", async (req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const sales = await Sale.find({
-      createdAt: { $gte: today, $lt: tomorrow },
-    });
+    const stats = await Sale.aggregate([
+      { $match: { createdAt: { $gte: today, $lt: tomorrow } } },
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          total: { $sum: "$total" },
+          totalProfit: { $sum: "$totalProfit" },
+        },
+      },
+    ]);
 
-    const total = sales.reduce((sum, s) => sum + Number(s.total || 0), 0);
-    const totalProfit = sales.reduce(
-      (sum, s) =>
-        sum +
-        Number(
-          s.totalProfit ??
-            s.profit ??
-            (Array.isArray(s.items)
-              ? s.items.reduce(
-                  (itemSum, item) => itemSum + (item.profit || 0),
-                  0,
-                )
-              : 0),
-        ),
-      0,
-    );
+    const result = stats[0] || { count: 0, total: 0, totalProfit: 0 };
 
     res.json({
       success: true,
-      count: sales.length,
-      total: Number(total.toFixed(2)),
-      totalProfit: Number(totalProfit.toFixed(2)),
+      count: result.count,
+      total: Number(result.total.toFixed(2)),
+      totalProfit: Number(result.totalProfit.toFixed(2)),
     });
   } catch (error) {
-    console.error("Get today sales error:", error);
     res
       .status(500)
-      .json({ success: false, message: "Failed to fetch today sales." });
+      .json({ success: false, message: "Failed to fetch today's sales." });
   }
 });
 

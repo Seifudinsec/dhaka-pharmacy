@@ -18,10 +18,10 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
     const { originalSaleId, items, reason } = req.body;
     const userId = req.user._id;
 
-    if (!originalSaleId || !Array.isArray(items) || items.length === 0) {
+    if (!originalSaleId || !items?.length) {
       return res.status(400).json({
         success: false,
-        message: "Original sale ID and at least one item are required",
+        message: "Original sale ID and items are required",
       });
     }
 
@@ -34,92 +34,72 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
         .session(session);
 
       if (!originalSale) {
-        const err = new Error("Original sale not found");
-        err.status = 404;
-        throw err;
+        throw { status: 404, message: "Original sale not found" };
       }
 
-      // Immutable sale baselines (never mutate these derived values)
-      const originalGrossTotal = Number(
-        originalSale.items
-          .reduce((sum, item) => sum + Number(item.subtotal || 0), 0)
-          .toFixed(2),
+      const originalGrossTotal = originalSale.items.reduce(
+        (sum, i) => sum + (i.subtotal || 0),
+        0,
       );
-      const originalGrossProfit = Number(
-        originalSale.items
-          .reduce((sum, item) => sum + Number(item.profit || 0), 0)
-          .toFixed(2),
+      const originalGrossProfit = originalSale.items.reduce(
+        (sum, i) => sum + (i.profit || 0),
+        0,
       );
 
       const returnItems = [];
+      for (const item of items) {
+        const medicineId = String(item?.medicineId || "");
+        const qty = Math.floor(Number(item?.quantity || 0));
 
-      for (const rawReturnItem of items) {
-        const medicineId = String(rawReturnItem?.medicineId || "");
-        const qty = Math.floor(Number(rawReturnItem?.quantity || 0));
-
-        if (!medicineId || Number.isNaN(qty) || qty <= 0) {
-          const err = new Error("Invalid return item payload");
-          err.status = 400;
-          throw err;
+        if (!medicineId || isNaN(qty) || qty <= 0) {
+          throw { status: 400, message: "Invalid return item payload" };
         }
 
-        const originalItem = originalSale.items.find(
-          (item) => String(item.medicine?._id || item.medicine) === medicineId,
+        const orig = originalSale.items.find(
+          (i) => String(i.medicine?._id || i.medicine) === medicineId,
         );
+        if (!orig)
+          throw {
+            status: 400,
+            message: `Item ${medicineId} not in original sale`,
+          };
+        if (qty > orig.quantity)
+          throw {
+            status: 400,
+            message: `Invalid return quantity for ${orig.medicineName}`,
+          };
 
-        if (!originalItem) {
-          const err = new Error("Item not found in original sale");
-          err.status = 400;
-          throw err;
-        }
-
-        if (qty > originalItem.quantity) {
-          const err = new Error(
-            `Invalid return quantity for ${originalItem.medicineName}`,
-          );
-          err.status = 400;
-          throw err;
-        }
-
-        // Sum previously returned qty for this sale+medicine
-        const existingReturns = await Return.find({
+        const prevReturns = await Return.find({
           originalSale: originalSaleId,
           "items.medicine": medicineId,
         }).session(session);
-
-        const totalReturnedQuantity = existingReturns.reduce((sum, ret) => {
-          const returnedItem = ret.items.find(
-            (item) => String(item.medicine) === medicineId,
-          );
-          return sum + (returnedItem ? Number(returnedItem.quantity || 0) : 0);
+        const totalReturned = prevReturns.reduce((sum, r) => {
+          const ri = r.items.find((i) => String(i.medicine) === medicineId);
+          return sum + (ri ? Number(ri.quantity) : 0);
         }, 0);
 
-        const remainingReturnable =
-          originalItem.quantity - totalReturnedQuantity;
-        if (qty > remainingReturnable) {
-          const err = new Error(
-            `Cannot return ${qty} units of ${originalItem.medicineName}. Only ${remainingReturnable} units available for return.`,
-          );
-          err.status = 400;
-          throw err;
+        if (qty > orig.quantity - totalReturned) {
+          throw {
+            status: 400,
+            message: `Cannot return ${qty} units of ${orig.medicineName}.`,
+          };
         }
 
-        const unitPrice = Number(originalItem.unitPrice || 0);
-        const buyingPrice = Number(originalItem.buyingPrice || 0);
-        const subtotal = Number((qty * unitPrice).toFixed(2));
-        const profit = Number((qty * (unitPrice - buyingPrice)).toFixed(2));
+        const subtotal = Number((qty * orig.unitPrice).toFixed(2));
+        const profit = Number(
+          (qty * (orig.unitPrice - orig.buyingPrice)).toFixed(2),
+        );
 
         returnItems.push({
           medicine: medicineId,
-          medicineName: originalItem.medicineName,
+          medicineName: orig.medicineName,
           quantity: qty,
-          unitPrice,
-          buyingPrice,
+          unitPrice: orig.unitPrice,
+          buyingPrice: orig.buyingPrice,
           subtotal,
           profit,
         });
 
-        // Return stock to inventory
         await Medicine.updateOne(
           { _id: medicineId },
           { $inc: { stock: qty } },
@@ -128,13 +108,13 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
       }
 
       const totalRefund = Number(
-        returnItems.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2),
+        returnItems.reduce((sum, i) => sum + i.subtotal, 0).toFixed(2),
       );
       const totalProfitLoss = Number(
-        returnItems.reduce((sum, item) => sum + item.profit, 0).toFixed(2),
+        returnItems.reduce((sum, i) => sum + i.profit, 0).toFixed(2),
       );
 
-      const [createdReturn] = await Return.create(
+      [returnRecord] = await Return.create(
         [
           {
             originalSale: originalSaleId,
@@ -148,55 +128,41 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
         ],
         { session },
       );
-      returnRecord = createdReturn;
 
-      // Recompute sale net totals from immutable baselines + all return records
       const allReturns = await Return.find({
         originalSale: originalSaleId,
       }).session(session);
-
-      const cumulativeReturnedValue = Number(
-        allReturns
-          .reduce((sum, ret) => sum + Number(ret.totalRefund || 0), 0)
-          .toFixed(2),
+      const cumulativeRefund = allReturns.reduce(
+        (sum, r) => sum + (r.totalRefund || 0),
+        0,
       );
-      const cumulativeReturnedProfitLoss = Number(
-        allReturns
-          .reduce((sum, ret) => sum + Number(ret.totalProfitLoss || 0), 0)
-          .toFixed(2),
+      const cumulativeProfitLoss = allReturns.reduce(
+        (sum, r) => sum + (r.totalProfitLoss || 0),
+        0,
       );
 
-      // Prevent negative drift by deriving net values from immutable sale baselines
-      const nextSaleTotal = Number(
-        Math.max(0, originalGrossTotal - cumulativeReturnedValue).toFixed(2),
-      );
-      const nextSaleTotalProfit = Number(
-        (originalGrossProfit - cumulativeReturnedProfitLoss).toFixed(2),
-      );
-
-      let newStatus = "completed";
-      if (
-        cumulativeReturnedValue > 0 &&
-        cumulativeReturnedValue < originalGrossTotal
-      ) {
-        newStatus = "partially_returned";
-      } else if (cumulativeReturnedValue >= originalGrossTotal) {
-        newStatus = "fully_refunded";
-      }
+      const nextTotal = Math.max(0, originalGrossTotal - cumulativeRefund);
+      const nextProfit = originalGrossProfit - cumulativeProfitLoss;
+      const nextStatus =
+        cumulativeRefund >= originalGrossTotal
+          ? "fully_refunded"
+          : cumulativeRefund > 0
+            ? "partially_returned"
+            : "completed";
 
       updatedSale = await Sale.findByIdAndUpdate(
         originalSaleId,
         {
-          status: newStatus,
-          total: nextSaleTotal,
-          totalProfit: nextSaleTotalProfit,
+          status: nextStatus,
+          total: Number(nextTotal.toFixed(2)),
+          totalProfit: Number(nextProfit.toFixed(2)),
           $addToSet: { returnTransactions: returnRecord._id },
         },
         { new: true, session },
       );
     });
 
-    return res.status(201).json({
+    res.status(201).json({
       success: true,
       message: "Return processed successfully",
       data: returnRecord,
@@ -204,15 +170,12 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
         id: updatedSale?._id,
         status: updatedSale?.status,
         total: updatedSale?.total,
-        totalProfit: updatedSale?.totalProfit,
       },
     });
   } catch (error) {
-    console.error("Return processing error:", error);
-    return res.status(error.status || 500).json({
-      success: false,
-      message: error.message || "Failed to process return",
-    });
+    res
+      .status(error.status || 500)
+      .json({ success: false, message: error.message || "Return failed" });
   } finally {
     await session.endSession();
   }
