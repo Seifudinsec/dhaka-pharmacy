@@ -550,13 +550,9 @@ const ReportsPage = () => {
                 })}
               </div>
               <div className="chart-labels">
-                <span>7 days trend</span>
+                <span>{windowSize ? `${windowSize} ${windowSize > 1 && (dateRange === '6m' || dateRange === '1y') ? 'months' : 'days'} trend` : `${trendLabel} trend`}</span>
                 <span>
-                  KES{" "}
-                  {profitDaily
-                    .slice(-7)
-                    .reduce((a, b) => a + (b || 0), 0)
-                    .toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                  KES {profitDisplay.reduce((a, b) => a + (b || 0), 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
