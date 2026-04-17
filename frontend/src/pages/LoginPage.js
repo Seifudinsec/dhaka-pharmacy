@@ -148,23 +148,14 @@ export default function LoginPage() {
                     </>
                   ) : (
                     <>
-                      <AppIcon icon={faRightToBracket} /> INITIATE_CONNECTION
+                      <AppIcon icon={faRightToBracket} /> SIGN_IN
                     </>
                   )}
                 </span>
               </button>
             </form>
 
-            <p
-              style={{
-                textAlign: "center",
-                marginTop: 20,
-                fontSize: 12,
-                color: "var(--gray-400)",
-              }}
-            >
-              Default: admin / admin123
-            </p>
+
           </div>
         </div>
       </div>
