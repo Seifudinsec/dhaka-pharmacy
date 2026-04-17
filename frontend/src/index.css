@@ -626,7 +626,8 @@ body {
         height: auto;
         min-height: var(--header-h);
         flex-wrap: wrap;
-        padding-top: calc(12px + env(safe-area-inset-top, 0px));
+        align-items: flex-start;
+        padding-top: calc(16px + env(safe-area-inset-top, 0px));
         padding-bottom: 14px;
     }
 }
