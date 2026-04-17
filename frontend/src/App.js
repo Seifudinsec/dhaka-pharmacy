@@ -16,6 +16,7 @@ import SettingsPage from './pages/SettingsPage';
 import ReportsPage from './pages/ReportsPage';
 import UsersManagementPage from './pages/UsersManagementPage';
 import AppIcon from './components/common/AppIcon';
+import InstallAppButton from './components/common/InstallAppButton';
 import NotificationBell from './components/common/NotificationBell';
 import './index.css';
 
@@ -160,8 +161,11 @@ const AppLayout = ({ theme, setTheme }) => {
             </h1>
           </div>
           <div className="header-actions">
-            <NotificationBell />
-            <ThemeToggleBtn theme={theme} onToggle={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} />
+            <div className="header-controls">
+              <NotificationBell />
+              <InstallAppButton />
+              <ThemeToggleBtn theme={theme} onToggle={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} />
+            </div>
             <span className="header-meta">{new Date().toLocaleDateString('en-KE', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</span>
           </div>
         </header>
