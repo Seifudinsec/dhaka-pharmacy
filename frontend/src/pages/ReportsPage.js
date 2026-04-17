@@ -274,13 +274,20 @@ const ReportsPage = () => {
       label = "12 months";
     } else if (range === "custom") {
       // custom - prefer daily breakdown when available
-      label = customStartDate && customEndDate ? `${customStartDate} to ${customEndDate}` : "Custom range";
+      label =
+        customStartDate && customEndDate
+          ? `${customStartDate} to ${customEndDate}`
+          : "Custom range";
     }
 
     return { rev, prof, label };
   };
 
-  const { rev: revenueTrend, prof: profitTrend, label: trendLabel } = determineTrend();
+  const {
+    rev: revenueTrend,
+    prof: profitTrend,
+    label: trendLabel,
+  } = determineTrend();
 
   const getWindowSize = () => {
     if (dateRange === "7d") return 7;
@@ -292,11 +299,21 @@ const ReportsPage = () => {
   };
 
   const windowSize = getWindowSize();
-  const revenueDisplay = windowSize ? revenueTrend.slice(-windowSize) : revenueTrend;
-  const profitDisplay = windowSize ? profitTrend.slice(-windowSize) : profitTrend;
+  const revenueDisplay = windowSize
+    ? revenueTrend.slice(-windowSize)
+    : revenueTrend;
+  const profitDisplay = windowSize
+    ? profitTrend.slice(-windowSize)
+    : profitTrend;
 
-  const revenueChartMax = Math.max(...(revenueDisplay.length ? revenueDisplay : [1]), 1);
-  const profitChartMax = Math.max(...(profitDisplay.length ? profitDisplay.map((v) => Math.abs(v)) : [1]), 1);
+  const revenueChartMax = Math.max(
+    ...(revenueDisplay.length ? revenueDisplay : [1]),
+    1,
+  );
+  const profitChartMax = Math.max(
+    ...(profitDisplay.length ? profitDisplay.map((v) => Math.abs(v)) : [1]),
+    1,
+  );
 
   return (
     <div className="reports-page">
@@ -526,9 +543,16 @@ const ReportsPage = () => {
                 })}
               </div>
               <div className="chart-labels">
-                <span>{windowSize ? `${windowSize} ${windowSize > 1 && (dateRange === '6m' || dateRange === '1y') ? 'months' : 'days'} trend` : `${trendLabel} trend`}</span>
                 <span>
-                  KES {revenueDisplay.reduce((a, b) => a + (b || 0), 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                  {windowSize
+                    ? `${windowSize} ${windowSize > 1 && (dateRange === "6m" || dateRange === "1y") ? "months" : "days"} trend`
+                    : `${trendLabel} trend`}
+                </span>
+                <span>
+                  KES{" "}
+                  {revenueDisplay
+                    .reduce((a, b) => a + (b || 0), 0)
+                    .toLocaleString("en-KE", { minimumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
@@ -550,9 +574,16 @@ const ReportsPage = () => {
                 })}
               </div>
               <div className="chart-labels">
-                <span>{windowSize ? `${windowSize} ${windowSize > 1 && (dateRange === '6m' || dateRange === '1y') ? 'months' : 'days'} trend` : `${trendLabel} trend`}</span>
                 <span>
-                  KES {profitDisplay.reduce((a, b) => a + (b || 0), 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                  {windowSize
+                    ? `${windowSize} ${windowSize > 1 && (dateRange === "6m" || dateRange === "1y") ? "months" : "days"} trend`
+                    : `${trendLabel} trend`}
+                </span>
+                <span>
+                  KES{" "}
+                  {profitDisplay
+                    .reduce((a, b) => a + (b || 0), 0)
+                    .toLocaleString("en-KE", { minimumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
@@ -644,9 +675,27 @@ const ReportsPage = () => {
                         </td>
                         <td data-label="Stock Status">
                           <span
-                            className={`status-badge ${medicine.stockStatus || "unknown"}`}
+                            className={`badge ${
+                              medicine.stockStatus === "out_of_stock"
+                                ? "badge-red"
+                                : medicine.stockStatus === "low"
+                                  ? "badge-amber"
+                                  : medicine.stockStatus === "ok"
+                                    ? "badge-green"
+                                    : medicine.stockStatus === "not_found"
+                                      ? "badge-gray"
+                                      : "badge-gray"
+                            }`}
                           >
-                            {medicine.stockStatus || "Unknown"}
+                            {medicine.stockStatus === "out_of_stock"
+                              ? "Out of Stock"
+                              : medicine.stockStatus === "low"
+                                ? "Low Stock"
+                                : medicine.stockStatus === "ok"
+                                  ? "In Stock"
+                                  : medicine.stockStatus === "not_found"
+                                    ? "Deleted"
+                                    : "Unknown"}
                           </span>
                         </td>
                         <td data-label="Last Sale">

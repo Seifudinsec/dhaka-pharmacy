@@ -301,7 +301,14 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
   // enrich low performers with stockStatus and lastSale
   for (const med of lowPerforming) {
     const doc = await Medicine.findOne({ name: med.name }).lean();
-    if (doc) med.stockStatus = doc.stockStatus;
+    if (doc) {
+      // .lean() strips virtuals, so compute stockStatus from raw stock value
+      if (doc.stock === 0) med.stockStatus = "out_of_stock";
+      else if (doc.stock < 10) med.stockStatus = "low";
+      else med.stockStatus = "ok";
+    } else {
+      med.stockStatus = "not_found";
+    }
 
     const lastSale = sales
       .filter((s) => (s.items || []).some((it) => it.medicineName === med.name))
