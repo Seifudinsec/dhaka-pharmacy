@@ -95,20 +95,33 @@ const normalizeReportsResponse = (payload) => {
     },
     topMedicines: Array.isArray(topSelling) ? topSelling : [],
     lowPerformingMedicines: Array.isArray(lowPerforming) ? lowPerforming : [],
-    summary: {
-      totalRevenue: numberOrZero(summary.totalRevenue),
-      totalProfit: numberOrZero(summary.totalProfit),
-      totalSales: numberOrZero(summary.totalSales),
-      totalRefunds: numberOrZero(
+    summary: (() => {
+      const totalRevenue = numberOrZero(summary.totalRevenue);
+      const totalProfit = numberOrZero(summary.totalProfit);
+      const totalRefunds = numberOrZero(
         summary.totalRefunds ?? refundSummary.totalRefunds,
-      ),
-      grossRevenue: numberOrZero(summary.grossRevenue),
-      grossProfit: numberOrZero(summary.grossProfit),
-      refundProfitLoss: numberOrZero(summary.refundProfitLoss),
-      averageSaleValue: numberOrZero(summary.averageSaleValue),
-      profitMargin: numberOrZero(summary.profitMargin),
-      growthRate: numberOrZero(summary.growthRate),
-    },
+      );
+      const refundProfitLoss = numberOrZero(summary.refundProfitLoss);
+      const grossRevenue = numberOrZero(
+        summary.grossRevenue ?? totalRevenue + totalRefunds,
+      );
+      const grossProfit = numberOrZero(
+        summary.grossProfit ?? totalProfit + refundProfitLoss,
+      );
+
+      return {
+        totalRevenue,
+        totalProfit,
+        totalSales: numberOrZero(summary.totalSales),
+        totalRefunds,
+        grossRevenue,
+        grossProfit,
+        refundProfitLoss,
+        averageSaleValue: numberOrZero(summary.averageSaleValue),
+        profitMargin: numberOrZero(summary.profitMargin),
+        growthRate: numberOrZero(summary.growthRate),
+      };
+    })(),
   };
 };
 
