@@ -1,10 +1,110 @@
-/* ===== DHAKA PHARMACY - Global Styles ===== */
+/* ===== DHAKA PHARMACY - Modern Browser Reset & Compatibility ===== */
 *,
 *::before,
 *::after {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+}
+
+/* Base compatibility resets */
+html {
+    -webkit-text-size-adjust: 100%; /* Prevent font size adjustment after orientation changes in iOS */
+    -moz-tab-size: 4; /* Use a consistent tab size */
+    tab-size: 4;
+    font-family:
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        "Helvetica Neue",
+        Arial,
+        "Noto Sans",
+        sans-serif,
+        "Apple Color Emoji",
+        "Segoe UI Emoji",
+        "Segoe UI Symbol",
+        "Noto Color Emoji"; /* Modern system font stack */
+    line-height: 1.5; /* Use a consistent line height */
+}
+
+body {
+    -webkit-font-smoothing: antialiased; /* Smoother font rendering in macOS/Safari */
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Improve consistency of form elements */
+button,
+input,
+optgroup,
+select,
+textarea {
+    font-family: inherit;
+    font-size: 100%;
+    line-height: inherit;
+    color: inherit;
+}
+
+button,
+select {
+    text-transform: none; /* Remove the inheritance of text transform in Edge, Firefox, and IE */
+}
+
+button,
+[type="button"],
+[type="reset"],
+[type="submit"] {
+    -webkit-appearance: button; /* Correct the inability to style clickable types in iOS and Safari */
+    background-color: transparent;
+    background-image: none;
+}
+
+/* Remove default padding in Firefox */
+:-moz-focusring {
+    outline: auto;
+}
+
+/* Remove default margin in Safari */
+progress {
+    vertical-align: baseline;
+}
+
+/* Correct the cursor style of increment and decrement buttons in Safari */
+::-webkit-inner-spin-button,
+::-webkit-outer-spin-button {
+    height: auto;
+}
+
+/* Correct the appearance in Chrome and Safari */
+[type="search"] {
+    -webkit-appearance: textfield;
+    outline-offset: -2px;
+}
+
+/* Remove internal padding in Chrome and Safari on macOS */
+::-webkit-search-decoration {
+    -webkit-appearance: none;
+}
+
+/* Correct the inability to style clickable types in iOS and Safari */
+::-webkit-file-upload-button {
+    -webkit-appearance: button;
+    font: inherit;
+}
+
+/* Media resets */
+img,
+svg,
+video,
+canvas,
+audio,
+iframe,
+embed,
+object {
+    display: block;
+    max-width: 100%;
 }
 
 :root {
@@ -864,7 +964,9 @@ body {
     white-space: nowrap;
     box-shadow: var(--shadow-sm);
     z-index: var(--z-tooltip);
-    transition: opacity var(--transition), transform var(--transition);
+    transition:
+        opacity var(--transition),
+        transform var(--transition);
 }
 .install-app-btn-wrap:hover .install-app-btn-tooltip,
 .install-app-btn-wrap:focus-within .install-app-btn-tooltip {
@@ -1068,6 +1170,7 @@ body {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.45);
+    -webkit-backdrop-filter: blur(3px);
     backdrop-filter: blur(3px);
     display: flex;
     align-items: center;
@@ -1082,6 +1185,7 @@ body {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.45);
+    -webkit-backdrop-filter: blur(3px);
     backdrop-filter: blur(3px);
     z-index: 1999;
     animation: fadeIn var(--transition);
