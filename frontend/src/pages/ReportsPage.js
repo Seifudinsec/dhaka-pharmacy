@@ -123,13 +123,29 @@ const ReportsPage = () => {
 
     try {
       setLoading(true);
-      const { data } = await api.get("/reports", { params: queryParams });
 
-      if (data?.success) {
-        setReportData(normalizeReportsResponse(data));
+      let response;
+      try {
+        // Preferred endpoint (new API shape)
+        response = await api.get("/reports", { params: queryParams });
+      } catch (primaryError) {
+        // Backward-compatible fallback for environments still on old backend routes
+        const status = primaryError?.response?.status;
+        if (status === 404) {
+          response = await api.get("/reports/analytics", {
+            params: queryParams,
+          });
+        } else {
+          throw primaryError;
+        }
+      }
+
+      const payload = response?.data;
+      if (payload?.success) {
+        setReportData(normalizeReportsResponse(payload));
       } else {
         setReportData(DEFAULT_REPORT_DATA);
-        toast.error(data?.message || "Failed to load report data");
+        toast.error(payload?.message || "Failed to load report data");
       }
     } catch (error) {
       console.error("Error fetching report data:", error);
@@ -160,10 +176,28 @@ const ReportsPage = () => {
     }
 
     try {
-      const response = await api.get("/reports/export", {
-        params: { ...queryParams, format: "xlsx" },
-        responseType: "blob",
-      });
+      let response;
+      try {
+        response = await api.get("/reports/export", {
+          params: { ...queryParams, format: "xlsx" },
+          responseType: "blob",
+        });
+      } catch (primaryError) {
+        const status = primaryError?.response?.status;
+        if (status === 404) {
+          // Legacy backend may still support export via analytics-era params
+          response = await api.get("/reports/export", {
+            params: {
+              startDate: queryParams.startDate,
+              endDate: queryParams.endDate,
+              format: "xlsx",
+            },
+            responseType: "blob",
+          });
+        } else {
+          throw primaryError;
+        }
+      }
 
       const fileRangeStart =
         queryParams.startDate || format(new Date(), "yyyy-MM-dd");
