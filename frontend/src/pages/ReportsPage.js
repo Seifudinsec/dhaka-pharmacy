@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { format } from "date-fns";
+import { format, subDays, subMonths, subYears } from "date-fns";
 import {
   faChartLine,
   faChartBar,
@@ -251,11 +251,52 @@ const ReportsPage = () => {
     }
   };
 
-  const revenueDaily = reportData.revenue?.daily || [];
-  const profitDaily = reportData.profit?.daily || [];
+  // Determine which series (daily/weekly/monthly) to use for the mini charts
+  const determineTrend = () => {
+    const range = dateRange;
+    let rev = reportData.revenue?.daily || [];
+    let prof = reportData.profit?.daily || [];
+    let label = "";
 
-  const revenueChartMax = Math.max(...revenueDaily, 1);
-  const profitChartMax = Math.max(...profitDaily.map((v) => Math.abs(v)), 1);
+    if (range === "7d") {
+      label = "7 days";
+    } else if (range === "30d") {
+      label = "30 days";
+    } else if (range === "90d") {
+      label = "90 days";
+    } else if (range === "6m") {
+      rev = reportData.revenue?.monthly || [];
+      prof = reportData.profit?.monthly || [];
+      label = "6 months";
+    } else if (range === "1y") {
+      rev = reportData.revenue?.monthly || [];
+      prof = reportData.profit?.monthly || [];
+      label = "12 months";
+    } else if (range === "custom") {
+      // custom - prefer daily breakdown when available
+      label = customStartDate && customEndDate ? `${customStartDate} to ${customEndDate}` : "Custom range";
+    }
+
+    return { rev, prof, label };
+  };
+
+  const { rev: revenueTrend, prof: profitTrend, label: trendLabel } = determineTrend();
+
+  const getWindowSize = () => {
+    if (dateRange === "7d") return 7;
+    if (dateRange === "30d") return 30;
+    if (dateRange === "90d") return 90;
+    if (dateRange === "6m") return 6; // months
+    if (dateRange === "1y") return 12; // months
+    return null; // custom or unknown -> use full series
+  };
+
+  const windowSize = getWindowSize();
+  const revenueDisplay = windowSize ? revenueTrend.slice(-windowSize) : revenueTrend;
+  const profitDisplay = windowSize ? profitTrend.slice(-windowSize) : profitTrend;
+
+  const revenueChartMax = Math.max(...(revenueDisplay.length ? revenueDisplay : [1]), 1);
+  const profitChartMax = Math.max(...(profitDisplay.length ? profitDisplay.map((v) => Math.abs(v)) : [1]), 1);
 
   return (
     <div className="reports-page">
@@ -473,7 +514,7 @@ const ReportsPage = () => {
             <h3>Revenue Trends (Net)</h3>
             <div className="chart-placeholder">
               <div className="mini-chart">
-                {revenueDaily.slice(-7).map((value, index) => {
+                {revenueDisplay.map((value, index) => {
                   const height = `${(Math.abs(value || 0) / revenueChartMax) * 100}%`;
                   return (
                     <div
@@ -485,13 +526,9 @@ const ReportsPage = () => {
                 })}
               </div>
               <div className="chart-labels">
-                <span>7 days trend</span>
+                <span>{windowSize ? `${windowSize} ${windowSize > 1 && (dateRange === '6m' || dateRange === '1y') ? 'months' : 'days'} trend` : `${trendLabel} trend`}</span>
                 <span>
-                  KES{" "}
-                  {revenueDaily
-                    .slice(-7)
-                    .reduce((a, b) => a + (b || 0), 0)
-                    .toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                  KES {revenueDisplay.reduce((a, b) => a + (b || 0), 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
@@ -501,7 +538,7 @@ const ReportsPage = () => {
             <h3>Profit Analysis (Net)</h3>
             <div className="chart-placeholder">
               <div className="mini-chart">
-                {profitDaily.slice(-7).map((value, index) => {
+                {profitDisplay.map((value, index) => {
                   const height = `${(Math.abs(value || 0) / profitChartMax) * 100}%`;
                   return (
                     <div
