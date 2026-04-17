@@ -100,17 +100,57 @@ router.get("/analytics", async (req, res) => {
             profit: 0,
           };
         }
-        medicineSales[medName].unitsSold += item.quantity;
-        medicineSales[medName].revenue += item.subtotal;
-        medicineSales[medName].profit += item.profit || 0;
+
+        const itemRevenue = Number(item.subtotal ?? item.total ?? 0);
+        const itemProfit = Number(
+          item.profit ??
+            (Number(item.unitPrice || 0) - Number(item.buyingPrice || 0)) *
+              Number(item.quantity || 0),
+        );
+
+        medicineSales[medName].unitsSold += Number(item.quantity || 0);
+        medicineSales[medName].revenue += itemRevenue;
+        medicineSales[medName].profit += itemProfit;
       });
     });
 
-    // Do NOT subtract returns again here.
-    // Returned items were already reflected in Sale totals at sale-level.
-    // Subtracting return rows again would understate medicine performance.
+    // Net return adjustments for medicine-level analytics.
+    // Summary totals remain sourced from Sale totals, while product tables should be net of returns.
+    returns.forEach((ret) => {
+      ret.items.forEach((item) => {
+        const medName = item.medicineName;
+        if (!medicineSales[medName]) {
+          medicineSales[medName] = {
+            name: medName,
+            unitsSold: 0,
+            revenue: 0,
+            profit: 0,
+          };
+        }
+
+        const returnRevenue = Number(item.subtotal ?? item.total ?? 0);
+        const returnProfit = Number(
+          item.profit ??
+            (Number(item.unitPrice || 0) - Number(item.buyingPrice || 0)) *
+              Number(item.quantity || 0),
+        );
+
+        medicineSales[medName].unitsSold -= Number(item.quantity || 0);
+        medicineSales[medName].revenue -= returnRevenue;
+        medicineSales[medName].profit -= returnProfit;
+      });
+    });
 
     const topMedicines = Object.values(medicineSales)
+      .map((med) => ({
+        ...med,
+        unitsSold: Number((med.unitsSold || 0).toFixed(2)),
+        revenue: Number((med.revenue || 0).toFixed(2)),
+        profit: Number((med.profit || 0).toFixed(2)),
+      }))
+      .filter(
+        (med) => med.unitsSold > 0 || med.revenue !== 0 || med.profit !== 0,
+      )
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10)
       .map((med) => ({
@@ -119,7 +159,13 @@ router.get("/analytics", async (req, res) => {
       }));
 
     const lowPerformingMedicines = Object.values(medicineSales)
-      .filter((med) => med.unitsSold < 10) // Changed from 5 to 10 for better tracking
+      .map((med) => ({
+        ...med,
+        unitsSold: Number((med.unitsSold || 0).toFixed(2)),
+        revenue: Number((med.revenue || 0).toFixed(2)),
+        profit: Number((med.profit || 0).toFixed(2)),
+      }))
+      .filter((med) => med.unitsSold >= 0 && med.unitsSold < 10)
       .sort((a, b) => a.unitsSold - b.unitsSold)
       .slice(0, 10);
 
