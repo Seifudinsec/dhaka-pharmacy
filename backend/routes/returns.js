@@ -39,10 +39,16 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
         throw err;
       }
 
-      // Use immutable baseline totals for status calculation
-      const originalGrossTotal = originalSale.items.reduce(
-        (sum, item) => sum + Number(item.subtotal || 0),
-        0,
+      // Immutable sale baselines (never mutate these derived values)
+      const originalGrossTotal = Number(
+        originalSale.items
+          .reduce((sum, item) => sum + Number(item.subtotal || 0), 0)
+          .toFixed(2),
+      );
+      const originalGrossProfit = Number(
+        originalSale.items
+          .reduce((sum, item) => sum + Number(item.profit || 0), 0)
+          .toFixed(2),
       );
 
       const returnItems = [];
@@ -144,13 +150,28 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
       );
       returnRecord = createdReturn;
 
-      // Recompute cumulative returned value using immutable return records
+      // Recompute sale net totals from immutable baselines + all return records
       const allReturns = await Return.find({
         originalSale: originalSaleId,
       }).session(session);
-      const cumulativeReturnedValue = allReturns.reduce(
-        (sum, ret) => sum + Number(ret.totalRefund || 0),
-        0,
+
+      const cumulativeReturnedValue = Number(
+        allReturns
+          .reduce((sum, ret) => sum + Number(ret.totalRefund || 0), 0)
+          .toFixed(2),
+      );
+      const cumulativeReturnedProfitLoss = Number(
+        allReturns
+          .reduce((sum, ret) => sum + Number(ret.totalProfitLoss || 0), 0)
+          .toFixed(2),
+      );
+
+      // Prevent negative drift by deriving net values from immutable sale baselines
+      const nextSaleTotal = Number(
+        Math.max(0, originalGrossTotal - cumulativeReturnedValue).toFixed(2),
+      );
+      const nextSaleTotalProfit = Number(
+        (originalGrossProfit - cumulativeReturnedProfitLoss).toFixed(2),
       );
 
       let newStatus = "completed";
@@ -167,11 +188,9 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
         originalSaleId,
         {
           status: newStatus,
-          $push: { returnTransactions: returnRecord._id },
-          $inc: {
-            total: -totalRefund,
-            totalProfit: -totalProfitLoss,
-          },
+          total: nextSaleTotal,
+          totalProfit: nextSaleTotalProfit,
+          $addToSet: { returnTransactions: returnRecord._id },
         },
         { new: true, session },
       );
