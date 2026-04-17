@@ -60,14 +60,19 @@ export default function InstallAppButton() {
   }
 
   return (
-    <button
-      className="install-app-btn"
-      onClick={handleInstall}
-      aria-label="Install Dhaka Pharmacy app"
-      title="Install Dhaka Pharmacy"
-      type="button"
-    >
-      <AppIcon icon={faDownload} />
-    </button>
+    <div className="install-app-btn-wrap">
+      <button
+        className="install-app-btn"
+        onClick={handleInstall}
+        aria-label="Install Dhaka Pharmacy app"
+        title="Install Dhaka Pharmacy"
+        type="button"
+      >
+        <AppIcon icon={faDownload} />
+      </button>
+      <span className="install-app-btn-tooltip" aria-hidden="true">
+        Download app
+      </span>
+    </div>
   );
 }

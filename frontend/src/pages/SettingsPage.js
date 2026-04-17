@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { faBell, faDatabase, faDownload, faFloppyDisk, faPalette, faRotateLeft, faTriangleExclamation, faUserGroup, faUserPlus } from '@fortawesome/free-solid-svg-icons';
+import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import ToggleSwitch from '../components/settings/ToggleSwitch';
@@ -16,8 +17,9 @@ const TABS = [
 ];
 
 export default function SettingsPage({ theme, onThemeChange, notificationSettings, onNotificationSettingsChange }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const navigate = useNavigate();
   const restoreInputRef = useRef(null);
   const [activeTab, setActiveTab] = useState('notifications');
   const [notif, setNotif] = useState({
@@ -188,17 +190,19 @@ export default function SettingsPage({ theme, onThemeChange, notificationSetting
           })}>Delete All Data</button>
           <button className="btn btn-danger" onClick={() => openConfirm({
             title: 'Logout All Devices',
-            message: 'This will invalidate all active sessions for your account.',
+            message: 'This will invalidate all active sessions for every user, including this admin account.',
             confirmText: 'Logout All',
             action: async () => {
               const { data } = await api.post('/settings/danger/logout-all-devices');
-              toast.success(data.message || 'Logged out from all devices.');
+              toast.success(data.message || 'All users have been signed out.');
+              logout();
+              navigate('/login', { replace: true });
             },
           })}>Logout From All Devices</button>
         </div></div>
       </div>
     );
-  }, [activeTab, notif, isAdmin, theme, onThemeChange, savingNotif]);
+  }, [activeTab, notif, isAdmin, theme, onThemeChange, savingNotif, logout, navigate]);
 
   return (
     <div className="settings-page">

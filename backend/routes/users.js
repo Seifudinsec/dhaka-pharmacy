@@ -215,11 +215,37 @@ router.put('/:id/toggle-status', async (req, res) => {
 // DELETE /api/users/:id
 router.delete('/:id', async (req, res) => {
   try {
+    const { adminPassword } = req.body || {};
+
+    if (!adminPassword) {
+      return res.status(400).json({ success: false, message: 'Admin password is required to delete a user.' });
+    }
+
+    const admin = await User.findById(req.user._id).select('+password');
+    const isMatch = await bcrypt.compare(adminPassword, admin.password);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Admin password incorrect. Authorization failed.' });
+    }
+
     if (String(req.user._id) === String(req.params.id)) {
       return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
     }
-    const user = await User.findByIdAndDelete(req.params.id);
+
+    const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    if (user.username === 'admin') {
+      return res.status(400).json({ success: false, message: 'The primary admin account cannot be deleted.' });
+    }
+
+    if (user.role === 'admin') {
+      const adminCount = await User.countDocuments({ role: 'admin' });
+      if (adminCount <= 1) {
+        return res.status(400).json({ success: false, message: 'Cannot delete the last admin user.' });
+      }
+    }
+
+    await user.deleteOne();
     res.json({ success: true, message: 'User deleted successfully.' });
   } catch (error) {
     console.error('Delete user error:', error);

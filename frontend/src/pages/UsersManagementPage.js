@@ -31,6 +31,8 @@ const UsersManagementPage = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteAdminPassword, setDeleteAdminPassword] = useState("");
   const [formData, setFormData] = useState({
     username: "",
     password: "",
@@ -250,19 +252,26 @@ const UsersManagementPage = () => {
     }
   };
 
-  const handleDeleteUser = async (userId) => {
-    if (
-      !confirm(
-        "Are you sure you want to delete this user? This action cannot be undone.",
-      )
-    ) {
+  const closeDeleteModal = () => {
+    setDeleteTarget(null);
+    setDeleteAdminPassword("");
+  };
+
+  const handleDeleteUser = async (e) => {
+    e.preventDefault();
+    if (!deleteTarget) {
       return;
     }
+    const userId = deleteTarget._id;
     setActionLoading((prev) => ({ ...prev, [`delete_${userId}`]: true }));
     try {
-      const { data } = await api.delete(`/users/${userId}`);
+      const { data } = await api.delete(`/users/${userId}`, {
+        data: { adminPassword: deleteAdminPassword },
+      });
       if (data.success) {
         toast.success("User deleted successfully");
+        closeDeleteModal();
+        setExpandedUserId((prev) => (prev === userId ? null : prev));
         fetchUsers();
       }
     } catch (error) {
@@ -293,6 +302,11 @@ const UsersManagementPage = () => {
     });
     setResetStep(0);
     setShowResetPasswordModal(true);
+  };
+
+  const openDeleteModal = (user) => {
+    setDeleteTarget(user);
+    setDeleteAdminPassword("");
   };
 
   const filteredUsers = users.filter((user) =>
@@ -488,7 +502,7 @@ const UsersManagementPage = () => {
                       {user.username !== "admin" && (
                         <button
                           className="btn btn-sm btn-danger"
-                          onClick={() => handleDeleteUser(user._id)}
+                          onClick={() => openDeleteModal(user)}
                           disabled={actionLoading[`delete_${user._id}`]}
                           title="Delete user"
                         >
@@ -654,7 +668,7 @@ const UsersManagementPage = () => {
                       {user.username !== "admin" && (
                         <button
                           className="btn btn-sm btn-danger"
-                          onClick={() => handleDeleteUser(user._id)}
+                          onClick={() => openDeleteModal(user)}
                           disabled={actionLoading[`delete_${user._id}`]}
                           title="Delete user"
                         >
@@ -904,6 +918,80 @@ const UsersManagementPage = () => {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="modal-overlay" onClick={closeDeleteModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Delete User</h2>
+              <button className="modal-close" onClick={closeDeleteModal}>
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleDeleteUser}>
+              <div className="modal-body">
+                <div
+                  style={{
+                    padding: "12px",
+                    background: "var(--warning-50)",
+                    border: "1px solid var(--warning-200)",
+                    borderRadius: "6px",
+                    marginBottom: "16px",
+                  }}
+                >
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: "13px",
+                      color: "var(--warning-700)",
+                    }}
+                  >
+                    <strong>Security Check:</strong> Verify your admin password
+                    to permanently delete{" "}
+                    <strong>{deleteTarget.username}</strong>.
+                  </p>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="delete-admin-password">
+                    Your Admin Password
+                  </label>
+                  <input
+                    id="delete-admin-password"
+                    type="password"
+                    required
+                    autoFocus
+                    placeholder="Enter your current password"
+                    value={deleteAdminPassword}
+                    onChange={(e) => setDeleteAdminPassword(e.target.value)}
+                    className="form-input"
+                  />
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={closeDeleteModal}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-danger"
+                  disabled={
+                    actionLoading[`delete_${deleteTarget._id}`] ||
+                    !deleteAdminPassword
+                  }
+                >
+                  {actionLoading[`delete_${deleteTarget._id}`]
+                    ? "Deleting..."
+                    : "Verify & Delete"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

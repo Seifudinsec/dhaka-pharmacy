@@ -137,10 +137,16 @@ router.post('/danger/delete-all-data', adminOnly, async (req, res) => {
 });
 
 // POST /api/settings/danger/logout-all-devices
-router.post('/danger/logout-all-devices', async (req, res) => {
+router.post('/danger/logout-all-devices', adminOnly, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.user._id, { $inc: { tokenVersion: 1 } });
-    res.json({ success: true, message: 'Logged out from all devices successfully.' });
+    const result = await User.updateMany({}, { $inc: { tokenVersion: 1 } });
+    res.json({
+      success: true,
+      message: 'All user sessions were invalidated successfully. Please sign in again.',
+      data: {
+        affectedUsers: result.modifiedCount || 0,
+      },
+    });
   } catch (error) {
     console.error('Logout all devices error:', error);
     res.status(500).json({ success: false, message: 'Failed to logout from all devices.' });
