@@ -566,16 +566,18 @@ router.get("/export", async (req, res) => {
     rows.push(["Total Sales", summary.totalSales]);
     rows.push(["Total Refunds", summary.totalRefunds]);
     rows.push(["Profit Margin (%)", summary.profitMargin]);
+    rows.push(["Average Sale Value (KES)", summary.averageSaleValue]);
+    rows.push(["Growth Rate (%)", summary.growthRate]);
     rows.push([]);
 
     // Top Selling table
     rows.push(["Top Selling Medicines (Net Values)"]);
     rows.push([
       "Medicine Name",
-      "Net Units Sold",
-      "Net Revenue (KES)",
-      "Net Profit (KES)",
-      "Profit Margin (%)",
+      "Units Sold",
+      "Revenue (KES)",
+      "Profit (KES)",
+      "Margin (%)",
       "Refund Rate (%)",
     ]);
     for (const m of topSelling) {
@@ -594,21 +596,31 @@ router.get("/export", async (req, res) => {
     rows.push(["Low Performing Items"]);
     rows.push([
       "Medicine Name",
-      "Net Units Sold",
-      "Net Revenue (KES)",
-      "Net Profit (KES)",
-      "Refund Rate (%)",
+      "Units Sold",
+      "Revenue (KES)",
+      "Profit (KES)",
+      "Margin (%)",
       "Stock Status",
       "Last Sale",
     ]);
     for (const m of lowPerforming) {
+      const stockLabel =
+        m.stockStatus === "out_of_stock"
+          ? "Out of Stock"
+          : m.stockStatus === "low"
+            ? "Low Stock"
+            : m.stockStatus === "ok"
+              ? "In Stock"
+              : m.stockStatus === "not_found"
+                ? "Deleted"
+                : "Unknown";
       rows.push([
         m.name,
         m.unitsSold,
         round2(m.revenue),
         round2(m.profit),
-        round2(m.refundRate),
-        m.stockStatus || "Unknown",
+        round2(m.profitMargin),
+        stockLabel,
         m.lastSale ? format(new Date(m.lastSale), "yyyy-MM-dd") : "Never",
       ]);
     }
