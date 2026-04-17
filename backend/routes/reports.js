@@ -359,6 +359,14 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
       totalProfit,
       totalSales,
       totalRefunds,
+      grossRevenue: round2(totalRevenue + totalRefunds),
+      grossProfit: round2(
+        totalProfit +
+          returns.reduce((sum, r) => sum + getReturnProfitLoss(r), 0),
+      ),
+      refundProfitLoss: round2(
+        returns.reduce((sum, r) => sum + getReturnProfitLoss(r), 0),
+      ),
       averageSaleValue,
       profitMargin,
       growthRate,
@@ -409,6 +417,14 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
         totalProfit,
         totalSales,
         totalRefunds,
+        grossRevenue: round2(totalRevenue + totalRefunds),
+        grossProfit: round2(
+          totalProfit +
+            returns.reduce((sum, r) => sum + getReturnProfitLoss(r), 0),
+        ),
+        refundProfitLoss: round2(
+          returns.reduce((sum, r) => sum + getReturnProfitLoss(r), 0),
+        ),
         averageSaleValue,
         profitMargin,
         growthRate,
@@ -525,7 +541,20 @@ router.get("/export", async (req, res) => {
     // Summary section
     rows.push(["Summary"]);
     rows.push(["Metric", "Value"]);
+    rows.push([
+      "Gross Revenue (Before refunds)",
+      round2(
+        summary.grossRevenue ?? summary.totalRevenue + summary.totalRefunds,
+      ),
+    ]);
     rows.push(["Total Revenue (NET after refunds)", summary.totalRevenue]);
+    rows.push([
+      "Gross Profit (Before refunds)",
+      round2(
+        summary.grossProfit ?? summary.totalProfit + summary.refundProfitLoss,
+      ),
+    ]);
+    rows.push(["Refund Profit Loss", round2(summary.refundProfitLoss ?? 0)]);
     rows.push(["Total Profit (NET after refunds)", summary.totalProfit]);
     rows.push(["Total Sales", summary.totalSales]);
     rows.push(["Total Refunds", summary.totalRefunds]);

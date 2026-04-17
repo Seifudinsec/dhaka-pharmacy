@@ -32,6 +32,9 @@ const DEFAULT_REPORT_DATA = {
     totalProfit: 0,
     totalSales: 0,
     totalRefunds: 0,
+    grossRevenue: 0,
+    grossProfit: 0,
+    refundProfitLoss: 0,
     averageSaleValue: 0,
     profitMargin: 0,
     growthRate: 0,
@@ -99,6 +102,9 @@ const normalizeReportsResponse = (payload) => {
       totalRefunds: numberOrZero(
         summary.totalRefunds ?? refundSummary.totalRefunds,
       ),
+      grossRevenue: numberOrZero(summary.grossRevenue),
+      grossProfit: numberOrZero(summary.grossProfit),
+      refundProfitLoss: numberOrZero(summary.refundProfitLoss),
       averageSaleValue: numberOrZero(summary.averageSaleValue),
       profitMargin: numberOrZero(summary.profitMargin),
       growthRate: numberOrZero(summary.growthRate),
@@ -350,6 +356,66 @@ const ReportsPage = () => {
             <span className="card-change">
               {reportData.lowPerformingMedicines.length} low performers
             </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-header">
+          <h2>Profit Breakdown</h2>
+        </div>
+        <div className="card-body" style={{ display: "grid", gap: 10 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 14,
+            }}
+          >
+            <span>Gross Profit (Before refunds)</span>
+            <strong>
+              KES{" "}
+              {(reportData.summary.grossProfit || 0).toLocaleString("en-KE", {
+                minimumFractionDigits: 2,
+              })}
+            </strong>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 14,
+            }}
+          >
+            <span>Refund Profit Loss</span>
+            <strong style={{ color: "var(--danger)" }}>
+              - KES{" "}
+              {(reportData.summary.refundProfitLoss || 0).toLocaleString(
+                "en-KE",
+                {
+                  minimumFractionDigits: 2,
+                },
+              )}
+            </strong>
+          </div>
+          <div
+            style={{
+              borderTop: "1px solid var(--gray-200)",
+              paddingTop: 10,
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 15,
+            }}
+          >
+            <span>
+              <strong>Net Profit</strong>
+            </span>
+            <strong>
+              KES{" "}
+              {(reportData.summary.totalProfit || 0).toLocaleString("en-KE", {
+                minimumFractionDigits: 2,
+              })}
+            </strong>
           </div>
         </div>
       </div>
