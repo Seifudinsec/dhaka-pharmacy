@@ -1,178 +1,199 @@
-import React, { useState, useEffect } from 'react';
-import { format, subDays, subMonths, startOfMonth, endOfMonth } from 'date-fns';
-import { faChartLine, faChartBar, faDownload, faCalendarDays, faCoins, faArrowTrendUp, faBox, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
-import AppIcon from '../components/common/AppIcon';
-import api from '../utils/api';
-import toast from 'react-hot-toast';
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { format } from "date-fns";
+import {
+  faChartLine,
+  faChartBar,
+  faDownload,
+  faCoins,
+  faArrowTrendUp,
+  faBox,
+} from "@fortawesome/free-solid-svg-icons";
+import AppIcon from "../components/common/AppIcon";
+import api from "../utils/api";
+import toast from "react-hot-toast";
+
+const RANGE_OPTIONS = [
+  { value: "7d", label: "Last 7 Days" },
+  { value: "30d", label: "Last 30 Days" },
+  { value: "90d", label: "Last 90 Days" },
+  { value: "6m", label: "Last 6 Months" },
+  { value: "1y", label: "Last Year" },
+  { value: "custom", label: "Custom Range" },
+];
+
+const DEFAULT_REPORT_DATA = {
+  revenue: { daily: [], weekly: [], monthly: [] },
+  profit: { daily: [], weekly: [], monthly: [] },
+  sales: { daily: [], weekly: [], monthly: [] },
+  topMedicines: [],
+  lowPerformingMedicines: [],
+  summary: {
+    totalRevenue: 0,
+    totalProfit: 0,
+    totalSales: 0,
+    totalRefunds: 0,
+    averageSaleValue: 0,
+    profitMargin: 0,
+    growthRate: 0,
+  },
+};
+
+const numberOrZero = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+const resolveRangePayload = (range, customStartDate, customEndDate) => {
+  if (range !== "custom") return { range };
+
+  if (!customStartDate || !customEndDate) {
+    return null;
+  }
+
+  return {
+    range: "custom",
+    startDate: customStartDate,
+    endDate: customEndDate,
+  };
+};
+
+const normalizeReportsResponse = (payload) => {
+  // New API shape:
+  // { summary, revenueTrends, profitTrends, topSelling, lowPerforming, refundSummary, range }
+  // Backward-compatible analytics shape (under data) still possible.
+  if (!payload || typeof payload !== "object") return DEFAULT_REPORT_DATA;
+
+  const source =
+    payload.data && typeof payload.data === "object" ? payload.data : payload;
+
+  const summary = source.summary || {};
+  const revenueTrends = source.revenueTrends || source.revenue || {};
+  const profitTrends = source.profitTrends || source.profit || {};
+  const salesCounts = source.salesCounts || source.sales || {};
+  const topSelling = source.topSelling || source.topMedicines || [];
+  const lowPerforming =
+    source.lowPerforming || source.lowPerformingMedicines || [];
+  const refundSummary = source.refundSummary || {};
+
+  return {
+    revenue: {
+      daily: Array.isArray(revenueTrends.daily) ? revenueTrends.daily : [],
+      weekly: Array.isArray(revenueTrends.weekly) ? revenueTrends.weekly : [],
+      monthly: Array.isArray(revenueTrends.monthly)
+        ? revenueTrends.monthly
+        : [],
+    },
+    profit: {
+      daily: Array.isArray(profitTrends.daily) ? profitTrends.daily : [],
+      weekly: Array.isArray(profitTrends.weekly) ? profitTrends.weekly : [],
+      monthly: Array.isArray(profitTrends.monthly) ? profitTrends.monthly : [],
+    },
+    sales: {
+      daily: Array.isArray(salesCounts.daily) ? salesCounts.daily : [],
+      weekly: Array.isArray(salesCounts.weekly) ? salesCounts.weekly : [],
+      monthly: Array.isArray(salesCounts.monthly) ? salesCounts.monthly : [],
+    },
+    topMedicines: Array.isArray(topSelling) ? topSelling : [],
+    lowPerformingMedicines: Array.isArray(lowPerforming) ? lowPerforming : [],
+    summary: {
+      totalRevenue: numberOrZero(summary.totalRevenue),
+      totalProfit: numberOrZero(summary.totalProfit),
+      totalSales: numberOrZero(summary.totalSales),
+      totalRefunds: numberOrZero(
+        summary.totalRefunds ?? refundSummary.totalRefunds,
+      ),
+      averageSaleValue: numberOrZero(summary.averageSaleValue),
+      profitMargin: numberOrZero(summary.profitMargin),
+      growthRate: numberOrZero(summary.growthRate),
+    },
+  };
+};
 
 const ReportsPage = () => {
   const [loading, setLoading] = useState(true);
-  const [dateRange, setDateRange] = useState('30days');
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
-  const [reportData, setReportData] = useState({
-    revenue: { daily: [], weekly: [], monthly: [] },
-    profit: { daily: [], weekly: [], monthly: [] },
-    sales: { daily: [], weekly: [], monthly: [] },
-    topMedicines: [],
-    lowPerformingMedicines: [],
-    summary: {
-      totalRevenue: 0,
-      totalProfit: 0,
-      totalSales: 0,
-      averageSaleValue: 0,
-      profitMargin: 0,
-      growthRate: 0
-    }
-  });
+  const [dateRange, setDateRange] = useState("30d");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [reportData, setReportData] = useState(DEFAULT_REPORT_DATA);
 
-  const dateRanges = [
-    { value: '7days', label: 'Last 7 Days' },
-    { value: '30days', label: 'Last 30 Days' },
-    { value: '90days', label: 'Last 90 Days' },
-    { value: '6months', label: 'Last 6 Months' },
-    { value: '1year', label: 'Last Year' },
-    { value: 'custom', label: 'Custom Range' }
-  ];
+  const queryParams = useMemo(
+    () => resolveRangePayload(dateRange, customStartDate, customEndDate),
+    [dateRange, customStartDate, customEndDate],
+  );
 
-  useEffect(() => {
-    fetchReportData();
-  }, [dateRange, customStartDate, customEndDate]);
+  const fetchReportData = useCallback(async () => {
+    if (!queryParams) return;
 
-  // Listen for data change events to refresh reports data
-  useEffect(() => {
-    const handleDataChange = (event) => {
-      console.log('ReportsPage received data change event:', event.detail);
-      // Refresh reports when data changes (e.g., after returns, sales, etc.)
-      fetchReportData();
-    };
-
-    window.addEventListener('dataChanged', handleDataChange);
-    return () => window.removeEventListener('dataChanged', handleDataChange);
-  }, [dateRange, customStartDate, customEndDate]);
-
-  const fetchReportData = async () => {
     try {
       setLoading(true);
-      let startDate, endDate;
+      const { data } = await api.get("/reports", { params: queryParams });
 
-      if (dateRange === 'custom') {
-        if (!customStartDate || !customEndDate) return;
-        startDate = customStartDate;
-        endDate = customEndDate;
+      if (data?.success) {
+        setReportData(normalizeReportsResponse(data));
       } else {
-        const now = new Date();
-        switch (dateRange) {
-          case '7days':
-            startDate = format(subDays(now, 7), 'yyyy-MM-dd');
-            endDate = format(now, 'yyyy-MM-dd');
-            break;
-          case '30days':
-            startDate = format(subDays(now, 30), 'yyyy-MM-dd');
-            endDate = format(now, 'yyyy-MM-dd');
-            break;
-          case '90days':
-            startDate = format(subDays(now, 90), 'yyyy-MM-dd');
-            endDate = format(now, 'yyyy-MM-dd');
-            break;
-          case '6months':
-            startDate = format(subMonths(now, 6), 'yyyy-MM-dd');
-            endDate = format(now, 'yyyy-MM-dd');
-            break;
-          case '1year':
-            startDate = format(subMonths(now, 12), 'yyyy-MM-dd');
-            endDate = format(now, 'yyyy-MM-dd');
-            break;
-          default:
-            startDate = format(subDays(now, 30), 'yyyy-MM-dd');
-            endDate = format(now, 'yyyy-MM-dd');
-        }
-      }
-
-      const { data } = await api.get(`/reports/analytics?startDate=${startDate}&endDate=${endDate}`);
-      if (data.success) {
-        // Safely merge API data with default values to handle null/undefined
-        const apiData = data.data || {};
-        const mergedData = {
-          revenue: {
-            daily: apiData.revenue?.daily || [],
-            weekly: apiData.revenue?.weekly || [],
-            monthly: apiData.revenue?.monthly || []
-          },
-          profit: {
-            daily: apiData.profit?.daily || [],
-            weekly: apiData.profit?.weekly || [],
-            monthly: apiData.profit?.monthly || []
-          },
-          sales: {
-            daily: apiData.sales?.daily || [],
-            weekly: apiData.sales?.weekly || [],
-            monthly: apiData.sales?.monthly || []
-          },
-          topMedicines: apiData.topMedicines || [],
-          lowPerformingMedicines: apiData.lowPerformingMedicines || [],
-          summary: {
-            totalRevenue: apiData.summary?.totalRevenue || 0,
-            totalProfit: apiData.summary?.totalProfit || 0,
-            totalSales: apiData.summary?.totalSales || 0,
-            averageSaleValue: apiData.summary?.averageSaleValue || 0,
-            profitMargin: apiData.summary?.profitMargin || 0,
-            growthRate: apiData.summary?.growthRate || 0
-          }
-        };
-        setReportData(mergedData);
+        setReportData(DEFAULT_REPORT_DATA);
+        toast.error(data?.message || "Failed to load report data");
       }
     } catch (error) {
-      console.error('Error fetching report data:', error);
-      toast.error('Failed to load report data');
+      console.error("Error fetching report data:", error);
+      toast.error("Failed to load report data");
+      setReportData(DEFAULT_REPORT_DATA);
     } finally {
       setLoading(false);
     }
-  };
+  }, [queryParams]);
 
-  const exportReport = async (exportFormat) => {
+  useEffect(() => {
+    fetchReportData();
+  }, [fetchReportData]);
+
+  useEffect(() => {
+    const handleDataChange = () => {
+      fetchReportData();
+    };
+
+    window.addEventListener("dataChanged", handleDataChange);
+    return () => window.removeEventListener("dataChanged", handleDataChange);
+  }, [fetchReportData]);
+
+  const exportExcel = async () => {
+    if (!queryParams) {
+      toast.error("Please select both start and end date for custom range.");
+      return;
+    }
+
     try {
-      let startDate, endDate;
-
-      if (dateRange === 'custom') {
-        startDate = customStartDate;
-        endDate = customEndDate;
-      } else {
-        const now = new Date();
-        switch (dateRange) {
-          case '7days':
-            startDate = format(subDays(now, 7), 'yyyy-MM-dd');
-            endDate = format(now, 'yyyy-MM-dd');
-            break;
-          case '30days':
-            startDate = format(subDays(now, 30), 'yyyy-MM-dd');
-            endDate = format(now, 'yyyy-MM-dd');
-            break;
-          default:
-            startDate = format(subDays(now, 30), 'yyyy-MM-dd');
-            endDate = format(now, 'yyyy-MM-dd');
-        }
-      }
-
-      const response = await api.get(`/reports/export?startDate=${startDate}&endDate=${endDate}&format=${exportFormat}`, {
-        responseType: 'blob'
+      const response = await api.get("/reports/export", {
+        params: { ...queryParams, format: "xlsx" },
+        responseType: "blob",
       });
 
+      const fileRangeStart =
+        queryParams.startDate || format(new Date(), "yyyy-MM-dd");
+      const fileRangeEnd =
+        queryParams.endDate || format(new Date(), "yyyy-MM-dd");
       const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
+      const link = document.createElement("a");
+
       link.href = url;
-      link.setAttribute('download', `pharmacy-report-${startDate}-to-${endDate}.${exportFormat}`);
+      link.setAttribute(
+        "download",
+        `dhaka-pharmacy-report-${fileRangeStart}-to-${fileRangeEnd}.xlsx`,
+      );
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      toast.success(`Report exported as ${exportFormat.toUpperCase()}`);
+      toast.success("Excel report exported successfully");
     } catch (error) {
-      console.error('Error exporting report:', error);
-      toast.error('Failed to export report');
+      console.error("Error exporting Excel report:", error);
+      toast.error("Failed to export Excel report");
     }
   };
+
+  const revenueDaily = reportData.revenue?.daily || [];
+  const profitDaily = reportData.profit?.daily || [];
+
+  const revenueChartMax = Math.max(...revenueDaily, 1);
+  const profitChartMax = Math.max(...profitDaily.map((v) => Math.abs(v)), 1);
 
   if (loading) {
     return (
@@ -187,13 +208,19 @@ const ReportsPage = () => {
     <div className="reports-page">
       <div className="page-header-actions">
         <div className="date-range-selector">
-          <select value={dateRange} onChange={(e) => setDateRange(e.target.value)} className="form-select">
-            {dateRanges.map(range => (
-              <option key={range.value} value={range.value}>{range.label}</option>
+          <select
+            value={dateRange}
+            onChange={(e) => setDateRange(e.target.value)}
+            className="form-select"
+          >
+            {RANGE_OPTIONS.map((range) => (
+              <option key={range.value} value={range.value}>
+                {range.label}
+              </option>
             ))}
           </select>
-          
-          {dateRange === 'custom' && (
+
+          {dateRange === "custom" && (
             <div className="custom-date-range">
               <input
                 type="date"
@@ -214,18 +241,13 @@ const ReportsPage = () => {
         </div>
 
         <div className="export-actions">
-          <button onClick={() => exportReport('csv')} className="btn btn-secondary">
-            <AppIcon icon={faDownload} className="btn-icon" />
-            Export CSV
-          </button>
-          <button onClick={() => exportReport('xlsx')} className="btn btn-primary">
+          <button onClick={exportExcel} className="btn btn-primary">
             <AppIcon icon={faDownload} className="btn-icon" />
             Export Excel
           </button>
         </div>
       </div>
 
-      {/* Summary Cards */}
       <div className="summary-cards">
         <div className="summary-card">
           <div className="card-icon revenue">
@@ -233,10 +255,15 @@ const ReportsPage = () => {
           </div>
           <div className="card-content">
             <h3>Total Revenue</h3>
-            <p className="card-value">KES {(reportData.summary.totalRevenue || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</p>
+            <p className="card-value">
+              KES{" "}
+              {(reportData.summary.totalRevenue || 0).toLocaleString("en-KE", {
+                minimumFractionDigits: 2,
+              })}
+            </p>
             <span className="card-change positive">
               <AppIcon icon={faArrowTrendUp} />
-              +{(reportData.summary.growthRate || 0).toFixed(1)}%
+              {(reportData.summary.growthRate || 0).toFixed(1)}%
             </span>
           </div>
         </div>
@@ -247,7 +274,12 @@ const ReportsPage = () => {
           </div>
           <div className="card-content">
             <h3>Total Profit</h3>
-            <p className="card-value">KES {(reportData.summary.totalProfit || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</p>
+            <p className="card-value">
+              KES{" "}
+              {(reportData.summary.totalProfit || 0).toLocaleString("en-KE", {
+                minimumFractionDigits: 2,
+              })}
+            </p>
             <span className="card-change positive">
               <AppIcon icon={faArrowTrendUp} />
               {(reportData.summary.profitMargin || 0).toFixed(1)}% margin
@@ -263,7 +295,13 @@ const ReportsPage = () => {
             <h3>Total Sales</h3>
             <p className="card-value">{reportData.summary.totalSales}</p>
             <span className="card-change">
-              Avg: KES {(reportData.summary.averageSaleValue || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}
+              Avg: KES{" "}
+              {(reportData.summary.averageSaleValue || 0).toLocaleString(
+                "en-KE",
+                {
+                  minimumFractionDigits: 2,
+                },
+              )}
             </span>
           </div>
         </div>
@@ -282,45 +320,68 @@ const ReportsPage = () => {
         </div>
       </div>
 
-      {/* Charts Section */}
       <div className="charts-section">
         <div className="chart-container">
-          <h3>Revenue Trends</h3>
+          <h3>Revenue Trends (Net)</h3>
           <div className="chart-placeholder">
             <div className="mini-chart">
-              {(reportData.revenue?.daily || []).slice(-7).map((value, index) => (
-                <div key={index} className="chart-bar" style={{ height: `${(value || 0) / Math.max(...(reportData.revenue?.daily || [1])) * 100}%` }}></div>
-              ))}
+              {revenueDaily.slice(-7).map((value, index) => {
+                const height = `${(Math.abs(value || 0) / revenueChartMax) * 100}%`;
+                return (
+                  <div
+                    key={index}
+                    className="chart-bar"
+                    style={{ height }}
+                  ></div>
+                );
+              })}
             </div>
             <div className="chart-labels">
               <span>7 days trend</span>
-              <span>KES {(reportData.revenue?.daily || []).slice(-7).reduce((a, b) => a + (b || 0), 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</span>
+              <span>
+                KES{" "}
+                {revenueDaily
+                  .slice(-7)
+                  .reduce((a, b) => a + (b || 0), 0)
+                  .toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+              </span>
             </div>
           </div>
         </div>
 
         <div className="chart-container">
-          <h3>Profit Analysis</h3>
+          <h3>Profit Analysis (Net)</h3>
           <div className="chart-placeholder">
             <div className="mini-chart">
-              {(reportData.profit?.daily || []).slice(-7).map((value, index) => (
-                <div key={index} className="chart-bar profit" style={{ height: `${(value || 0) / Math.max(...(reportData.profit?.daily || [1])) * 100}%` }}></div>
-              ))}
+              {profitDaily.slice(-7).map((value, index) => {
+                const height = `${(Math.abs(value || 0) / profitChartMax) * 100}%`;
+                return (
+                  <div
+                    key={index}
+                    className="chart-bar profit"
+                    style={{ height }}
+                  ></div>
+                );
+              })}
             </div>
             <div className="chart-labels">
               <span>7 days trend</span>
-              <span>KES {(reportData.profit?.daily || []).slice(-7).reduce((a, b) => a + (b || 0), 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</span>
+              <span>
+                KES{" "}
+                {profitDaily
+                  .slice(-7)
+                  .reduce((a, b) => a + (b || 0), 0)
+                  .toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Tables Section */}
       <div className="tables-section">
         <div className="table-container">
           <h3>Top Selling Medicines</h3>
           <div className="table-wrap table-responsive-cards">
-
             <table className="data-table">
               <thead>
                 <tr>
@@ -334,13 +395,24 @@ const ReportsPage = () => {
               <tbody>
                 {(reportData.topMedicines || []).map((medicine, index) => (
                   <tr key={index}>
-                    <td data-label="Medicine">{medicine.name || 'Unknown'}</td>
+                    <td data-label="Medicine">{medicine.name || "Unknown"}</td>
                     <td data-label="Units Sold">{medicine.unitsSold || 0}</td>
-                    <td data-label="Revenue">KES {(medicine.revenue || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
-                    <td data-label="Profit">KES {(medicine.profit || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
-                    <td data-label="Margin">{(medicine.profitMargin || 0).toFixed(1)}%</td>
+                    <td data-label="Revenue">
+                      KES{" "}
+                      {(medicine.revenue || 0).toLocaleString("en-KE", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </td>
+                    <td data-label="Profit">
+                      KES{" "}
+                      {(medicine.profit || 0).toLocaleString("en-KE", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </td>
+                    <td data-label="Margin">
+                      {(medicine.profitMargin || 0).toFixed(1)}%
+                    </td>
                   </tr>
-
                 ))}
               </tbody>
             </table>
@@ -350,7 +422,6 @@ const ReportsPage = () => {
         <div className="table-container">
           <h3>Low Performing Items</h3>
           <div className="table-wrap table-responsive-cards">
-
             <table className="data-table">
               <thead>
                 <tr>
@@ -362,20 +433,34 @@ const ReportsPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {(reportData.lowPerformingMedicines || []).map((medicine, index) => (
-                  <tr key={index}>
-                    <td data-label="Medicine">{medicine.name || 'Unknown'}</td>
-                    <td data-label="Units Sold">{medicine.unitsSold || 0}</td>
-                    <td data-label="Revenue">KES {(medicine.revenue || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
-                    <td data-label="Stock Status">
-                      <span className={`status-badge ${medicine.stockStatus || 'unknown'}`}>
-                        {medicine.stockStatus || 'Unknown'}
-                      </span>
-                    </td>
-                    <td data-label="Last Sale">{medicine.lastSale ? format(new Date(medicine.lastSale), 'MMM dd, yyyy') : 'Never'}</td>
-                  </tr>
-
-                ))}
+                {(reportData.lowPerformingMedicines || []).map(
+                  (medicine, index) => (
+                    <tr key={index}>
+                      <td data-label="Medicine">
+                        {medicine.name || "Unknown"}
+                      </td>
+                      <td data-label="Units Sold">{medicine.unitsSold || 0}</td>
+                      <td data-label="Revenue">
+                        KES{" "}
+                        {(medicine.revenue || 0).toLocaleString("en-KE", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td data-label="Stock Status">
+                        <span
+                          className={`status-badge ${medicine.stockStatus || "unknown"}`}
+                        >
+                          {medicine.stockStatus || "Unknown"}
+                        </span>
+                      </td>
+                      <td data-label="Last Sale">
+                        {medicine.lastSale
+                          ? format(new Date(medicine.lastSale), "MMM dd, yyyy")
+                          : "Never"}
+                      </td>
+                    </tr>
+                  ),
+                )}
               </tbody>
             </table>
           </div>
