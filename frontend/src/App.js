@@ -12,6 +12,7 @@ import { Toaster } from "react-hot-toast";
 import {
   faBars,
   faBoxesStacked,
+  faCircleExclamation,
   faChartLine,
   faFileImport,
   faFileInvoiceDollar,
@@ -161,6 +162,18 @@ const Sidebar = ({ open, onClose }) => {
 const AppLayout = ({ theme, setTheme }) => {
   const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
   const [notificationSettings, setNotificationSettings] = useState(() => {
     try {
       const cached = localStorage.getItem("dhaka_notification_settings");
@@ -248,6 +261,26 @@ const AppLayout = ({ theme, setTheme }) => {
             </h1>
           </div>
           <div className="header-actions">
+            {isOffline && (
+              <div
+                className="offline-badge"
+                title="Working offline"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "var(--danger-light)",
+                  color: "var(--danger-600)",
+                  padding: "4px 10px",
+                  borderRadius: 20,
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                <AppIcon icon={faCircleExclamation} />
+                Offline
+              </div>
+            )}
             <div className="header-controls">
               <NotificationBell />
               <InstallAppButton />

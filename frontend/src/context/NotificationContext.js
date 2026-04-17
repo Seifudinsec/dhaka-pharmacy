@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { io } from "socket.io-client";
 import { differenceInDays } from "date-fns";
 import { useAuth } from "./AuthContext";
 import api from "../utils/api";
@@ -138,8 +139,20 @@ export function NotificationProvider({ children }) {
     };
 
     poll();
+
+    const socket = io(
+      process.env.REACT_APP_SOCKET_URL || window.location.origin,
+    );
+
+    socket.on("inventory_updated", () => {
+      poll();
+    });
+
     const timer = setInterval(poll, 60000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      socket.disconnect();
+    };
   }, [user, upsertNotifications]);
 
   const unreadCount = useMemo(

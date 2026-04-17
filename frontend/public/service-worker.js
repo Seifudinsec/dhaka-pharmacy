@@ -1,22 +1,21 @@
-const STATIC_CACHE = 'dhaka-pharmacy-static-v1';
-const API_CACHE = 'dhaka-pharmacy-api-v1';
+const STATIC_CACHE = "dhaka-pharmacy-static-v1";
+const API_CACHE = "dhaka-pharmacy-api-v1";
 const APP_SHELL_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/favicon.png',
-  '/dhaka-pharmacy-logo.png',
-  '/apple-touch-icon.png',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
+  "/",
+  "/index.html",
+  "/manifest.json",
+  "/favicon.png",
+  "/dhaka-pharmacy-logo.png",
+  "/apple-touch-icon.png",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
 ];
 
 const isSameOrigin = (url) => url.origin === self.location.origin;
-const isApiRequest = (url) => url.pathname.startsWith('/api');
-const isStaticAssetRequest = (request, url) => (
-  ['style', 'script', 'image', 'font'].includes(request.destination) ||
-  url.pathname.startsWith('/static/')
-);
+const isApiRequest = (url) => url.pathname.startsWith("/api");
+const isStaticAssetRequest = (request, url) =>
+  ["style", "script", "image", "font"].includes(request.destination) ||
+  url.pathname.startsWith("/static/");
 
 const putInCache = async (cacheName, request, response) => {
   const cache = await caches.open(cacheName);
@@ -41,7 +40,12 @@ const networkFirst = async (request, options = {}) => {
 
   try {
     const networkResponse = await fetch(request);
-    if (cacheName && networkResponse && networkResponse.ok && cacheable(networkResponse)) {
+    if (
+      cacheName &&
+      networkResponse &&
+      networkResponse.ok &&
+      cacheable(networkResponse)
+    ) {
       await putInCache(cacheName, request, networkResponse);
     }
     return networkResponse;
@@ -62,27 +66,35 @@ const networkFirst = async (request, options = {}) => {
   }
 };
 
-self.addEventListener('install', (event) => {
+self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE)
+    caches
+      .open(STATIC_CACHE)
       .then((cache) => cache.addAll(APP_SHELL_ASSETS))
-      .then(() => self.skipWaiting())
+      .then(() => self.skipWaiting()),
   );
 });
 
-self.addEventListener('activate', (event) => {
+self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => Promise.all(
-      cacheNames
-        .filter((cacheName) => ![STATIC_CACHE, API_CACHE].includes(cacheName))
-        .map((cacheName) => caches.delete(cacheName))
-    )).then(() => self.clients.claim())
+    caches
+      .keys()
+      .then((cacheNames) =>
+        Promise.all(
+          cacheNames
+            .filter(
+              (cacheName) => ![STATIC_CACHE, API_CACHE].includes(cacheName),
+            )
+            .map((cacheName) => caches.delete(cacheName)),
+        ),
+      )
+      .then(() => self.clients.claim()),
   );
 });
 
-self.addEventListener('fetch', (event) => {
+self.addEventListener("fetch", (event) => {
   const { request } = event;
-  if (request.method !== 'GET') {
+  if (request.method !== "GET") {
     return;
   }
 
@@ -92,21 +104,48 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (isApiRequest(url)) {
-    const hasAuthHeader = request.headers.has('Authorization');
+    const hasAuthHeader = request.headers.has("Authorization");
+    const isMedicinesList =
+      url.pathname === "/api/medicines" && request.method === "GET";
 
-    // Authenticated pharmacy data stays live-first and is not persisted to cache.
-    event.respondWith(networkFirst(request, {
-      cacheName: hasAuthHeader ? null : API_CACHE,
-    }));
+    if (isMedicinesList && hasAuthHeader) {
+      // Stale-While-Revalidate for medicines list
+      event.respondWith(
+        caches.open(API_CACHE).then((cache) => {
+          return cache.match(request).then((cachedResponse) => {
+            const fetchPromise = fetch(request)
+              .then((networkResponse) => {
+                if (networkResponse && networkResponse.ok) {
+                  cache.put(request, networkResponse.clone());
+                }
+                return networkResponse;
+              })
+              .catch(() => cachedResponse); // Return cached if fetch fails
+
+            return cachedResponse || fetchPromise;
+          });
+        }),
+      );
+      return;
+    }
+
+    // Authenticated pharmacy data stays live-first and is not persisted to cache by default.
+    event.respondWith(
+      networkFirst(request, {
+        cacheName: hasAuthHeader ? null : API_CACHE,
+      }),
+    );
     return;
   }
 
-  if (request.mode === 'navigate') {
-    event.respondWith(networkFirst(request, {
-      cacheName: STATIC_CACHE,
-      cacheable: (response) => response.type === 'basic',
-      fallbackUrl: '/index.html',
-    }));
+  if (request.mode === "navigate") {
+    event.respondWith(
+      networkFirst(request, {
+        cacheName: STATIC_CACHE,
+        cacheable: (response) => response.type === "basic",
+        fallbackUrl: "/index.html",
+      }),
+    );
     return;
   }
 

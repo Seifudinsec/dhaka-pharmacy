@@ -5,6 +5,7 @@ const auditLog = require("../middleware/audit");
 const Sale = require("../models/Sale");
 const Return = require("../models/Return");
 const Medicine = require("../models/Medicine");
+const { getIO } = require("../config/socket");
 
 const router = express.Router();
 
@@ -161,6 +162,10 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
         { new: true, session },
       );
     });
+
+    try {
+      getIO().emit("inventory_updated", { type: "return" });
+    } catch (e) {}
 
     res.status(201).json({
       success: true,

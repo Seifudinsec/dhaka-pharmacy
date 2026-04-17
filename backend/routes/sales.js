@@ -5,6 +5,8 @@ const Sale = require("../models/Sale");
 const Medicine = require("../models/Medicine");
 const { protect } = require("../middleware/auth");
 
+const { getIO } = require("../config/socket");
+
 router.use(protect);
 
 // GET /api/sales — sales history with optional date range
@@ -159,6 +161,10 @@ router.post("/", async (req, res) => {
 
       createdSale = sale;
     });
+
+    try {
+      getIO().emit("inventory_updated", { type: "sale" });
+    } catch (e) {}
 
     res.status(201).json({
       success: true,
