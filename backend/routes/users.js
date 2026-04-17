@@ -32,7 +32,18 @@ router.get('/check/:username', async (req, res) => {
 // POST /api/users
 router.post('/', auditLog('USER_CREATED', 'User'), async (req, res) => {
   try {
-    const { username, password, role } = req.body;
+    const { username, password, role, adminPassword } = req.body;
+
+    // Verify admin password before creating a new user
+    if (!adminPassword) {
+      return res.status(400).json({ success: false, message: 'Admin password is required to add a new user.' });
+    }
+    const admin = await User.findById(req.user._id).select('+password');
+    const isMatch = await bcrypt.compare(adminPassword, admin.password);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Admin password incorrect. Authorization failed.' });
+    }
+
     if (!username || !password) {
       return res.status(400).json({ success: false, message: 'Username and password are required.' });
     }

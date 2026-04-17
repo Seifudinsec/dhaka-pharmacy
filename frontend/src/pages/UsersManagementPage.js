@@ -18,6 +18,7 @@ const UsersManagementPage = () => {
   const [formData, setFormData] = useState({
     username: '',
     password: '',
+    adminPassword: '',
     role: 'pharmacist',
     notificationPreferences: {
       lowStock: true,
@@ -25,6 +26,9 @@ const UsersManagementPage = () => {
       dailySales: false
     }
   });
+
+  // State for the 2-step Add User Wizard
+  const [addStep, setAddStep] = useState(0); // 0: Verify Admin, 1: New User Details
   
   // States for the 3-Step Password Reset Wizard
   const [resetStep, setResetStep] = useState(0); // 0: Verify Admin, 1: New Pass, 2: Final Confirm
@@ -86,9 +90,11 @@ const UsersManagementPage = () => {
       if (data.success) {
         toast.success('User created successfully');
         setShowAddModal(false);
+        setAddStep(0);
         setFormData({
           username: '',
           password: '',
+          adminPassword: '',
           role: 'pharmacist',
           notificationPreferences: {
             lowStock: true,
@@ -101,6 +107,22 @@ const UsersManagementPage = () => {
     } catch (error) {
       console.error('Error creating user:', error);
       toast.error(error.response?.data?.message || 'Failed to create user');
+    }
+  };
+
+  const handleVerifyBeforeAdd = async (e) => {
+    e.preventDefault();
+    setVerifying(true);
+    try {
+      const { data } = await api.post('/users/verify-password', { password: formData.adminPassword });
+      if (data.success) {
+        setAddStep(1);
+        toast.success('Identity verified. You may now enter new user details.');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Verification failed. Please check your password.');
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -231,7 +253,21 @@ const UsersManagementPage = () => {
             className="form-input"
           />
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+        <button className="btn btn-primary" onClick={() => { 
+          setAddStep(0); 
+          setFormData({
+            username: '',
+            password: '',
+            adminPassword: '',
+            role: 'pharmacist',
+            notificationPreferences: {
+              lowStock: true,
+              expiry: true,
+              dailySales: false
+            }
+          });
+          setShowAddModal(true); 
+        }}>
           <AppIcon icon={faUserPlus} className="btn-icon" />
           Add User
         </button>
@@ -338,116 +374,147 @@ const UsersManagementPage = () => {
 
       {/* Add User Modal */}
       {showAddModal && (
-        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+        <div className="modal-overlay" onClick={() => { setShowAddModal(false); setAddStep(0); }}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Add New User</h2>
-              <button className="modal-close" onClick={() => setShowAddModal(false)}>×</button>
+              <button className="modal-close" onClick={() => { setShowAddModal(false); setAddStep(0); }}>×</button>
             </div>
-            <form onSubmit={handleAddUser} className="modal-body">
-              <div className="form-group">
-                <label htmlFor="add-username">Username</label>
-                <input
-                  id="add-username"
-                  type="text"
-                  required
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  className="form-input"
-                />
-                {usernameStatus.checked && formData.username.length >= 3 && (
-                  <div className={`input-feedback ${usernameStatus.exists ? 'error' : 'success'}`} style={{ 
-                    fontSize: '11px', 
-                    marginTop: '4px', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '4px',
-                    color: usernameStatus.exists ? 'var(--red-600)' : 'var(--green-600)'
-                  }}>
-                    <AppIcon icon={usernameStatus.exists ? faCircleXmark : faCheckCircle} size="xs" />
-                    {usernameStatus.exists ? 'Username already taken' : 'Username available'}
-                  </div>
-                )}
-              </div>
-              <div className="form-group">
-                <label htmlFor="add-password">Password</label>
-                <input
-                  id="add-password"
-                  type="password"
-                  required
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="form-input"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="add-role">Role</label>
-                <select
-                  id="add-role"
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  className="form-select"
-                >
-                  <option value="pharmacist">Pharmacist</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Notification Preferences</label>
-                <div className="checkbox-group">
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={formData.notificationPreferences.lowStock}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        notificationPreferences: {
-                          ...formData.notificationPreferences,
-                          lowStock: e.target.checked
-                        }
-                      })}
-                    />
-                    Low Stock Alerts
-                  </label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={formData.notificationPreferences.expiry}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        notificationPreferences: {
-                          ...formData.notificationPreferences,
-                          expiry: e.target.checked
-                        }
-                      })}
-                    />
-                    Expiry Alerts
-                  </label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={formData.notificationPreferences.dailySales}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        notificationPreferences: {
-                          ...formData.notificationPreferences,
-                          dailySales: e.target.checked
-                        }
-                      })}
-                    />
-                    Daily Sales Summary
-                  </label>
+            {addStep === 0 ? (
+              <form onSubmit={handleVerifyBeforeAdd} className="modal-body">
+                <div style={{ padding: '12px', background: 'var(--blue-50)', border: '1px solid var(--blue-200)', borderRadius: '6px', marginBottom: '16px' }}>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--blue-800)' }}>
+                    <strong>Security Check:</strong> Please verify your admin password before adding a new user.
+                  </p>
                 </div>
-              </div>
-              <div className="modal-actions">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={usernameStatus.exists || formData.username.length < 3}>
-                  Add User
-                </button>
-              </div>
-            </form>
+                <div className="form-group">
+                  <label htmlFor="add-admin-password">Your Admin Password</label>
+                  <input
+                    id="add-admin-password"
+                    type="password"
+                    required
+                    autoFocus
+                    placeholder="Enter your current password"
+                    value={formData.adminPassword || ''}
+                    onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
+                    className="form-input"
+                  />
+                </div>
+                <div className="modal-actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => { setShowAddModal(false); setAddStep(0); }}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={verifying || !formData.adminPassword}>
+                    {verifying ? 'Verifying...' : 'Verify to Proceed'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleAddUser} className="modal-body">
+                <div className="form-group">
+                  <label htmlFor="add-username">Username</label>
+                  <input
+                    id="add-username"
+                    type="text"
+                    required
+                    value={formData.username}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    className="form-input"
+                  />
+                  {usernameStatus.checked && formData.username.length >= 3 && (
+                    <div className={`input-feedback ${usernameStatus.exists ? 'error' : 'success'}`} style={{ 
+                      fontSize: '11px', 
+                      marginTop: '4px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '4px',
+                      color: usernameStatus.exists ? 'var(--red-600)' : 'var(--green-600)'
+                    }}>
+                      <AppIcon icon={usernameStatus.exists ? faCircleXmark : faCheckCircle} size="xs" />
+                      {usernameStatus.exists ? 'Username already taken' : 'Username available'}
+                    </div>
+                  )}
+                </div>
+                <div className="form-group">
+                  <label htmlFor="add-password">User's Password</label>
+                  <input
+                    id="add-password"
+                    type="password"
+                    required
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="form-input"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="add-role">Role</label>
+                  <select
+                    id="add-role"
+                    value={formData.role}
+                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                    className="form-select"
+                  >
+                    <option value="pharmacist">Pharmacist</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Notification Preferences</label>
+                  <div className="checkbox-group">
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={formData.notificationPreferences.lowStock}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          notificationPreferences: {
+                            ...formData.notificationPreferences,
+                            lowStock: e.target.checked
+                          }
+                        })}
+                      />
+                      Low Stock Alerts
+                    </label>
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={formData.notificationPreferences.expiry}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          notificationPreferences: {
+                            ...formData.notificationPreferences,
+                            expiry: e.target.checked
+                          }
+                        })}
+                      />
+                      Expiry Alerts
+                    </label>
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={formData.notificationPreferences.dailySales}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          notificationPreferences: {
+                            ...formData.notificationPreferences,
+                            dailySales: e.target.checked
+                          }
+                        })}
+                      />
+                      Daily Sales Summary
+                    </label>
+                  </div>
+                </div>
+                <div className="modal-actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => { setAddStep(0); }}>
+                    Back
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={usernameStatus.exists || formData.username.length < 3}>
+                    Add User
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
