@@ -164,7 +164,20 @@ router.post("/", async (req, res) => {
 
     try {
       getIO().emit("inventory_updated", { type: "sale" });
-    } catch (e) {}
+      
+      // Proactive notifications for low stock
+      if (createdSale && createdSale.items) {
+        createdSale.items.forEach(async (item) => {
+          const medicine = await Medicine.findById(item.medicine);
+          if (medicine) {
+            const { notifyLowStock } = require("../utils/notifier");
+            notifyLowStock(medicine);
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Socket emission error:", e);
+    }
 
     res.status(201).json({
       success: true,

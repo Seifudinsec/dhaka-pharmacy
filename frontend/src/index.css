@@ -3337,3 +3337,43 @@ tbody tr:hover {
     padding: 8px 0;
     animation: loaderFadeIn 0.2s ease;
 }
+
+/* --- Notification Popup Animations --- */
+@keyframes notificationEnter {
+    from {
+        opacity: 0;
+        transform: translate(20px, -20px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translate(0, 0) scale(1);
+    }
+}
+
+@keyframes notificationLeave {
+    from {
+        opacity: 1;
+        transform: translate(0, 0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translate(20px, -20px) scale(0.9);
+    }
+}
+
+.animate-enter {
+    animation: notificationEnter 0.35s cubic-bezier(0.21, 1.02, 0.73, 1) forwards;
+}
+
+.animate-leave {
+    animation: notificationLeave 0.3s ease-in forwards;
+}
+
+.notification-popup-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.notification-popup-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-2xl);
+}

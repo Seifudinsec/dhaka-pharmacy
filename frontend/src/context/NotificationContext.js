@@ -8,8 +8,10 @@ import React, {
 } from "react";
 import { io } from "socket.io-client";
 import { differenceInDays } from "date-fns";
+import { toast } from "react-hot-toast";
 import { useAuth } from "./AuthContext";
 import api from "../utils/api";
+import NotificationPopup from "../components/common/NotificationPopup";
 
 const NotificationContext = createContext(null);
 const STORAGE_KEY = "dhaka_notifications";
@@ -146,6 +148,23 @@ export function NotificationProvider({ children }) {
 
     socket.on("inventory_updated", () => {
       poll();
+    });
+
+    socket.on("notification", (data) => {
+      // Add to list
+      setNotifications(prev => {
+        const alreadyExists = prev.some(n => n.id === data.id);
+        if (alreadyExists) return prev;
+        return [data, ...prev].slice(0, 100);
+      });
+
+      // Show popup
+      toast.custom((t) => (
+        <NotificationPopup t={t} notification={data} />
+      ), {
+        duration: 5000,
+        position: 'top-right'
+      });
     });
 
     const timer = setInterval(poll, 60000);

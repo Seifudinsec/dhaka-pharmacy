@@ -165,7 +165,20 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
 
     try {
       getIO().emit("inventory_updated", { type: "return" });
-    } catch (e) {}
+      
+      // Proactive notifications for stock level changes
+      if (returnRecord && returnRecord.items) {
+        returnRecord.items.forEach(async (item) => {
+          const medicine = await Medicine.findById(item.medicine);
+          if (medicine) {
+            const { notifyLowStock } = require("../utils/notifier");
+            notifyLowStock(medicine);
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Socket emission error:", e);
+    }
 
     res.status(201).json({
       success: true,
