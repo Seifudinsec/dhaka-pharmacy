@@ -75,6 +75,8 @@ router.post("/", async (req, res) => {
       });
     }
 
+    const stockAlerts = [];
+
     await session.withTransaction(async () => {
       const saleItems = [];
       let totalAmount = 0;
@@ -121,6 +123,23 @@ router.post("/", async (req, res) => {
           continue;
         }
 
+        const newStock = medicine.stock - finalQty;
+        if (newStock === 0) {
+          stockAlerts.push({
+            id: medicine._id.toString(),
+            name: medicine.name,
+            stock: 0,
+            alertType: "out_of_stock",
+          });
+        } else if (newStock < 10) {
+          stockAlerts.push({
+            id: medicine._id.toString(),
+            name: medicine.name,
+            stock: newStock,
+            alertType: "low_stock",
+          });
+        }
+
         const unitPrice = Number(medicine.price);
         const buyingPrice = Number(medicine.buyingPrice || medicine.price);
         const subtotal = Number((unitPrice * finalQty).toFixed(2));
@@ -163,26 +182,14 @@ router.post("/", async (req, res) => {
     });
 
     try {
-      getIO().emit("inventory_updated", { type: "sale" });
-      
-      // Proactive notifications for low stock
-      if (createdSale && createdSale.items) {
-        createdSale.items.forEach(async (item) => {
-          const medicine = await Medicine.findById(item.medicine);
-          if (medicine) {
-            const { notifyLowStock } = require("../utils/notifier");
-            notifyLowStock(medicine);
-          }
-        });
-      }
-    } catch (e) {
-      console.error("Socket emission error:", e);
-    }
+      getIO().emit("inventory_updated", { type: "sale", stockAlerts });
+    } catch (e) {}
 
     res.status(201).json({
       success: true,
       message: "Sale recorded successfully.",
       data: createdSale,
+      stockAlerts: stockAlerts.length ? stockAlerts : undefined,
       warnings: warnings.length ? warnings : undefined,
     });
   } catch (error) {
@@ -236,4 +243,5 @@ router.get("/today", async (req, res) => {
   }
 });
 
+module.exports = router;
 module.exports = router;

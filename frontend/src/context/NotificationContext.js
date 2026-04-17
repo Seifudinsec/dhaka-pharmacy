@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { io } from "socket.io-client";
@@ -35,6 +36,10 @@ export function NotificationProvider({ children }) {
       return [];
     }
   });
+
+  // Popup queue: each item is { id, type, title, description }
+  const [popups, setPopups] = useState([]);
+  const popupIdRef = useRef(0);
 
   useEffect(() => {
     localStorage.setItem(
@@ -78,6 +83,25 @@ export function NotificationProvider({ children }) {
 
   const markAllAsRead = useCallback(() => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+  }, []);
+
+  // Show a real-time popup and also save to the notification panel
+  const showPopup = useCallback((type, title, description, meta = {}) => {
+    const uid = `popup-${Date.now()}-${++popupIdRef.current}`;
+    const notification = makeNotification(uid, type, title, description, meta);
+
+    // Add to notification panel
+    setNotifications((prev) => {
+      const next = [notification, ...prev].slice(0, 100);
+      return next;
+    });
+
+    // Add to popup queue
+    setPopups((prev) => [...prev, { id: uid, type, title, description }]);
+  }, []);
+
+  const dismissPopup = useCallback((id) => {
+    setPopups((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
   useEffect(() => {
@@ -146,7 +170,28 @@ export function NotificationProvider({ children }) {
       process.env.REACT_APP_SOCKET_URL || window.location.origin,
     );
 
-    socket.on("inventory_updated", () => {
+    socket.on("inventory_updated", ({ stockAlerts } = {}) => {
+      // Show real-time popups for affected medicines
+      if (Array.isArray(stockAlerts) && stockAlerts.length > 0) {
+        stockAlerts.forEach((alert) => {
+          if (alert.alertType === "out_of_stock") {
+            showPopup(
+              "error",
+              "Out of Stock",
+              `${alert.name} is now out of stock.`,
+              { route: `/inventory?highlight=${alert.id}` },
+            );
+          } else if (alert.alertType === "low_stock") {
+            showPopup(
+              "warning",
+              "Low Stock Alert",
+              `${alert.name}: only ${alert.stock} unit${alert.stock !== 1 ? "s" : ""} remaining.`,
+              { route: `/inventory?highlight=${alert.id}` },
+            );
+          }
+        });
+      }
+      // Also poll to refresh general notification panel
       poll();
     });
 
@@ -172,7 +217,7 @@ export function NotificationProvider({ children }) {
       clearInterval(timer);
       socket.disconnect();
     };
-  }, [user, upsertNotifications]);
+  }, [user, upsertNotifications, showPopup]);
 
   const unreadCount = useMemo(
     () => notifications.filter((n) => !n.isRead).length,
@@ -186,6 +231,9 @@ export function NotificationProvider({ children }) {
       dismissNotification,
       markAsRead,
       markAllAsRead,
+      popups,
+      showPopup,
+      dismissPopup,
     }),
     [
       notifications,
@@ -193,6 +241,9 @@ export function NotificationProvider({ children }) {
       dismissNotification,
       markAsRead,
       markAllAsRead,
+      popups,
+      showPopup,
+      dismissPopup,
     ],
   );
 

@@ -13,8 +13,10 @@ import AppIcon from "../components/common/AppIcon";
 import useDebounce from "../hooks/useDebounce";
 import useDelayedLoading from "../hooks/useDelayedLoading";
 import { SkeletonTable } from "../components/common/SkeletonLoaders";
+import { useNotifications } from "../context/NotificationContext";
 
 export default function BillingPage() {
+  const { showPopup } = useNotifications();
   const [medicines, setMedicines] = useState([]);
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState([]);
@@ -97,6 +99,27 @@ export default function BillingPage() {
       if (data.success) {
         toast.success("Sale processed successfully!");
         setLastReceipt({ ...data.data, cartSnapshot: [...cart] });
+
+        // Show real-time popup for each item that is now low/out of stock
+        const stockAlerts = data.stockAlerts || [];
+        stockAlerts.forEach((alert) => {
+          if (alert.alertType === "out_of_stock") {
+            showPopup(
+              "error",
+              "Out of Stock",
+              `${alert.name} is now out of stock.`,
+              { route: `/inventory?highlight=${alert.id}` },
+            );
+          } else if (alert.alertType === "low_stock") {
+            showPopup(
+              "warning",
+              "Low Stock Alert",
+              `${alert.name}: only ${alert.stock} unit${alert.stock !== 1 ? "s" : ""} remaining.`,
+              { route: `/inventory?highlight=${alert.id}` },
+            );
+          }
+        });
+
         setCart([]);
         setNotes("");
         fetchMedicines();

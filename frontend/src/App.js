@@ -39,6 +39,7 @@ import UsersManagementPage from "./pages/UsersManagementPage";
 import AppIcon from "./components/common/AppIcon";
 import InstallAppButton from "./components/common/InstallAppButton";
 import NotificationBell from "./components/common/NotificationBell";
+import NotificationPopup from "./components/common/NotificationPopup";
 import "./index.css";
 
 const getNavigationItems = (userRole) => {
@@ -374,6 +375,7 @@ export default function App() {
               style: { fontSize: 14, borderRadius: 10, fontWeight: 500 },
             }}
           />
+          <NotificationPopup />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route
