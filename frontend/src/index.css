@@ -526,8 +526,8 @@ body {
         height: auto;
         min-height: var(--header-h);
         flex-wrap: wrap;
-        padding-top: 10px;
-        padding-bottom: 10px;
+        padding-top: calc(12px + env(safe-area-inset-top, 0px));
+        padding-bottom: 14px;
     }
 }
 
@@ -576,7 +576,8 @@ body {
     .header-actions {
         width: 100%;
         justify-content: space-between;
-        padding-top: 8px;
+        padding-top: 10px;
+        padding-bottom: 4px;
         border-top: 1px solid var(--gray-100);
     }
 }
@@ -870,6 +871,36 @@ body {
     opacity: 1;
     transform: translate(-50%, 0);
 }
+.install-help-stack {
+    display: grid;
+    gap: 12px;
+}
+.install-help-copy {
+    margin: 0;
+    color: var(--gray-700);
+    font-size: 14px;
+    line-height: 1.55;
+}
+.install-help-note {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    background: var(--warning-50);
+    border: 1px solid var(--warning-200);
+    color: var(--warning-700);
+    font-size: 13px;
+    line-height: 1.5;
+}
+.install-help-steps {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--gray-700);
+    font-size: 14px;
+    line-height: 1.6;
+}
+.install-help-steps li + li {
+    margin-top: 6px;
+}
 .install-app-btn:hover {
     background: var(--gray-100);
     border-color: var(--primary);
@@ -886,6 +917,15 @@ body {
     background: #152238;
     border-color: #344966;
     color: #dbeafe;
+}
+[data-theme="dark"] .install-help-copy,
+[data-theme="dark"] .install-help-steps {
+    color: var(--gray-800);
+}
+[data-theme="dark"] .install-help-note {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.3);
+    color: #fcd34d;
 }
 [data-theme="dark"] .install-app-btn:hover {
     background: #1b2d49;
