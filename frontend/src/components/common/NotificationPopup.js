@@ -1,118 +1,87 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { 
-  faCircleExclamation, 
-  faTriangleExclamation, 
-  faCircleCheck, 
+import {
   faCircleInfo,
-  faXmark
+  faTriangleExclamation,
+  faCircleCheck,
+  faCircleXmark,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
-import { toast } from "react-hot-toast";
+import AppIcon from "./AppIcon";
+import { useNotifications } from "../../context/NotificationContext";
 
-const NotificationPopup = ({ t, notification }) => {
+const AUTO_DISMISS_MS = 6000;
+
+const typeConfig = {
+  info: { icon: faCircleInfo, className: "popup-info" },
+  warning: { icon: faTriangleExclamation, className: "popup-warning" },
+  success: { icon: faCircleCheck, className: "popup-success" },
+  error: { icon: faCircleXmark, className: "popup-error" },
+};
+
+function PopupItem({ popup, onDismiss }) {
   const navigate = useNavigate();
+  const timerRef = useRef(null);
+  const config = typeConfig[popup.type] || typeConfig.info;
 
-  const getIcon = () => {
-    switch (notification.type) {
-      case "error": return faCircleExclamation;
-      case "warning": return faTriangleExclamation;
-      case "success": return faCircleCheck;
-      default: return faCircleInfo;
-    }
-  };
+  useEffect(() => {
+    timerRef.current = setTimeout(() => onDismiss(popup.id), AUTO_DISMISS_MS);
+    return () => clearTimeout(timerRef.current);
+  }, [popup.id, onDismiss]);
 
-  const getIconColor = () => {
-    switch (notification.type) {
-      case "error": return "var(--danger)";
-      case "warning": return "var(--warning)";
-      case "success": return "var(--secondary)";
-      default: return "var(--primary)";
-    }
-  };
-
-  const handleView = () => {
-    toast.dismiss(t.id);
-    if (notification.meta?.route) {
-      navigate(notification.meta.route);
-    }
+  const handleClick = () => {
+    onDismiss(popup.id);
+    if (popup.route) navigate(popup.route);
   };
 
   return (
     <div
-      className={`notification-popup-card ${t.visible ? 'animate-enter' : 'animate-leave'}`}
-      style={{
-        background: 'var(--gray-900)',
-        color: '#fff',
-        padding: '12px 16px',
-        borderRadius: 'var(--radius-lg)',
-        boxShadow: 'var(--shadow-xl)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        minWidth: '320px',
-        maxWidth: '400px',
-        border: '1px solid var(--gray-800)',
-        pointerEvents: 'auto',
+      className={`notification-popup-item ${config.className}`}
+      onClick={handleClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") handleClick();
       }}
+      aria-label={`${popup.title}: ${popup.description}`}
     >
-      <div 
-        style={{ 
-          width: '40px', 
-          height: '40px', 
-          borderRadius: '10px', 
-          background: 'rgba(255,255,255,0.05)', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          color: getIconColor(),
-          fontSize: '18px',
-          flexShrink: 0
+      <div className="popup-item-icon">
+        <AppIcon icon={config.icon} />
+      </div>
+      <div className="popup-item-body">
+        <div className="popup-item-title">{popup.title}</div>
+        <div className="popup-item-description">{popup.description}</div>
+      </div>
+      <button
+        className="popup-item-close"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDismiss(popup.id);
         }}
+        aria-label="Dismiss"
       >
-        <FontAwesomeIcon icon={getIcon()} />
-      </div>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>{notification.title}</h4>
-        <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--gray-400)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {notification.description}
-        </p>
-      </div>
-
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-        <button
-          onClick={handleView}
-          style={{
-            background: 'var(--primary)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 'var(--radius-sm)',
-            padding: '6px 12px',
-            fontSize: '12px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.2s'
-          }}
-        >
-          View
-        </button>
-        <button
-          onClick={() => toast.dismiss(t.id)}
-          style={{
-            background: 'transparent',
-            color: 'var(--gray-500)',
-            border: 'none',
-            padding: '4px',
-            fontSize: '14px',
-            cursor: 'pointer'
-          }}
-        >
-          <FontAwesomeIcon icon={faXmark} />
-        </button>
+        <AppIcon icon={faXmark} />
+      </button>
+      <div className="popup-item-progress">
+        <div
+          className="popup-item-progress-bar"
+          style={{ animationDuration: `${AUTO_DISMISS_MS}ms` }}
+        />
       </div>
     </div>
   );
-};
+}
 
-export default NotificationPopup;
+export default function NotificationPopup() {
+  const { popups, dismissPopup } = useNotifications();
+
+  if (!popups.length) return null;
+
+  return (
+    <div className="notification-popup-container" aria-live="polite">
+      {popups.map((popup) => (
+        <PopupItem key={popup.id} popup={popup} onDismiss={dismissPopup} />
+      ))}
+    </div>
+  );
+}
