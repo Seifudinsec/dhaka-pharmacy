@@ -267,7 +267,7 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
     const s = medSales[name] || { units: 0, revenue: 0, profit: 0 };
     const r = medReturns[name] || { units: 0, revenue: 0, profit: 0 };
 
-    const netUnits = round2(s.units - r.units);
+    const netUnits = Math.round(s.units - r.units);
     const netRevenue = round2(s.revenue - r.revenue);
     const netProfit = round2(s.profit - r.profit);
     const refundRate =
@@ -581,7 +581,7 @@ router.get("/export", async (req, res) => {
     for (const m of topSelling) {
       rows.push([
         m.name,
-        round2(m.unitsSold),
+        m.unitsSold,
         round2(m.revenue),
         round2(m.profit),
         round2(m.profitMargin),
@@ -604,7 +604,7 @@ router.get("/export", async (req, res) => {
     for (const m of lowPerforming) {
       rows.push([
         m.name,
-        round2(m.unitsSold),
+        m.unitsSold,
         round2(m.revenue),
         round2(m.profit),
         round2(m.refundRate),
