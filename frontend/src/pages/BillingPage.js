@@ -7,6 +7,8 @@ import {
   faMagnifyingGlass,
   faPills,
   faXmark,
+  faReceipt,
+  faStickyNote,
 } from "@fortawesome/free-solid-svg-icons";
 import api from "../utils/api";
 import AppIcon from "../components/common/AppIcon";
@@ -296,35 +298,49 @@ export default function BillingPage() {
           </div>
 
           {cart.length > 0 && (
-            <div className="p-3 border-top">
-              <label className="form-label">Notes</label>
-              <input
-                className="form-control mb-3"
-                placeholder="Notes..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-              <div className="d-flex justify-content-between align-items-center pt-3 border-top-dashed">
-                <div>
-                  <div className="text-xs text-muted font-bold uppercase">
-                    Total
-                  </div>
-                  <div className="bill-total">KES {total.toFixed(2)}</div>
-                </div>
-                <button
-                  className="btn btn-success px-4 py-2"
-                  onClick={handleSale}
-                  disabled={processing}
-                >
-                  {processing ? (
-                    <span className="spinner spinner-sm" />
-                  ) : (
-                    <>
-                      <AppIcon icon={faCheckCircle} /> Confirm
-                    </>
-                  )}
-                </button>
+            <div className="cart-checkout">
+              <div className="cart-notes-row">
+                <label className="cart-notes-label">
+                  <AppIcon icon={faStickyNote} />
+                  Notes
+                </label>
+                <input
+                  className="form-control"
+                  placeholder="Add order notes (optional)..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
               </div>
+
+              <div className="cart-summary">
+                <div className="cart-summary-row">
+                  <span className="cart-summary-label">Items</span>
+                  <span className="cart-summary-value">
+                    {cart.reduce((s, i) => s + i.qty, 0)}
+                  </span>
+                </div>
+                <div className="cart-summary-row cart-summary-total">
+                  <span className="cart-summary-label">Total</span>
+                  <span className="cart-total-amount">
+                    KES {total.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                className="btn-confirm-sale"
+                onClick={handleSale}
+                disabled={processing}
+              >
+                {processing ? (
+                  <span className="spinner spinner-sm" />
+                ) : (
+                  <>
+                    <AppIcon icon={faCheckCircle} />
+                    Confirm Sale
+                  </>
+                )}
+              </button>
             </div>
           )}
         </div>
