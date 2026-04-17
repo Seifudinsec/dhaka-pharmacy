@@ -21,6 +21,7 @@ import {
   faCheckCircle,
   faCircleXmark,
 } from "@fortawesome/free-solid-svg-icons";
+import { SkeletonTable } from "../components/common/SkeletonLoaders";
 
 const UsersManagementPage = () => {
   const [users, setUsers] = useState([]);
@@ -60,6 +61,7 @@ const UsersManagementPage = () => {
     checked: false,
   });
   const [expandedUserId, setExpandedUserId] = useState(null);
+  const [actionLoading, setActionLoading] = useState({});
   const debouncedUsername = useDebounce(formData.username, 400);
 
   useEffect(() => {
@@ -227,6 +229,7 @@ const UsersManagementPage = () => {
   };
 
   const handleToggleUserStatus = async (userId, currentStatus) => {
+    setActionLoading((prev) => ({ ...prev, [`toggle_${userId}`]: true }));
     try {
       const { data } = await api.put(`/users/${userId}/toggle-status`, {
         status: currentStatus === "active" ? "inactive" : "active",
@@ -242,6 +245,8 @@ const UsersManagementPage = () => {
       toast.error(
         error.response?.data?.message || "Failed to update user status",
       );
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [`toggle_${userId}`]: false }));
     }
   };
 
@@ -253,6 +258,7 @@ const UsersManagementPage = () => {
     ) {
       return;
     }
+    setActionLoading((prev) => ({ ...prev, [`delete_${userId}`]: true }));
     try {
       const { data } = await api.delete(`/users/${userId}`);
       if (data.success) {
@@ -262,6 +268,8 @@ const UsersManagementPage = () => {
     } catch (error) {
       console.error("Error deleting user:", error);
       toast.error(error.response?.data?.message || "Failed to delete user");
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [`delete_${userId}`]: false }));
     }
   };
 
@@ -293,9 +301,27 @@ const UsersManagementPage = () => {
 
   if (loading) {
     return (
-      <div className="page-loading">
-        <div className="loading-spinner"></div>
-        <p>Loading users...</p>
+      <div className="users-management-page">
+        <div className="page-header-actions">
+          <div className="search-bar">
+            <AppIcon icon={faSearch} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Search users..."
+              className="form-input"
+              disabled
+            />
+          </div>
+          <button className="btn btn-primary" disabled>
+            <AppIcon icon={faUserPlus} className="btn-icon" />
+            Add User
+          </button>
+        </div>
+        <div className="users-table-container">
+          <div className="loader-fade-in">
+            <SkeletonTable rows={6} cols={7} />
+          </div>
+        </div>
       </div>
     );
   }
@@ -380,16 +406,24 @@ const UsersManagementPage = () => {
                       onClick={() =>
                         handleToggleUserStatus(user._id, user.status)
                       }
+                      disabled={actionLoading[`toggle_${user._id}`]}
                       title={`Click to ${user.status === "active" ? "deactivate" : "activate"}`}
                     >
-                      <AppIcon
-                        icon={
-                          user.status === "active" ? faToggleOn : faToggleOff
-                        }
-                        className={
-                          user.status === "active" ? "active" : "inactive"
-                        }
-                      />
+                      {actionLoading[`toggle_${user._id}`] ? (
+                        <span
+                          className="spinner spinner-sm"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <AppIcon
+                          icon={
+                            user.status === "active" ? faToggleOn : faToggleOff
+                          }
+                          className={
+                            user.status === "active" ? "active" : "inactive"
+                          }
+                        />
+                      )}
                       {user.status}
                     </button>
                   </td>
@@ -455,9 +489,17 @@ const UsersManagementPage = () => {
                         <button
                           className="btn btn-sm btn-danger"
                           onClick={() => handleDeleteUser(user._id)}
+                          disabled={actionLoading[`delete_${user._id}`]}
                           title="Delete user"
                         >
-                          <AppIcon icon={faTrash} />
+                          {actionLoading[`delete_${user._id}`] ? (
+                            <span
+                              className="spinner spinner-sm"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <AppIcon icon={faTrash} />
+                          )}
                         </button>
                       )}
                     </div>
@@ -518,16 +560,26 @@ const UsersManagementPage = () => {
                         onClick={() =>
                           handleToggleUserStatus(user._id, user.status)
                         }
+                        disabled={actionLoading[`toggle_${user._id}`]}
                         title={`Click to ${user.status === "active" ? "deactivate" : "activate"}`}
                       >
-                        <AppIcon
-                          icon={
-                            user.status === "active" ? faToggleOn : faToggleOff
-                          }
-                          className={
-                            user.status === "active" ? "active" : "inactive"
-                          }
-                        />
+                        {actionLoading[`toggle_${user._id}`] ? (
+                          <span
+                            className="spinner spinner-sm"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <AppIcon
+                            icon={
+                              user.status === "active"
+                                ? faToggleOn
+                                : faToggleOff
+                            }
+                            className={
+                              user.status === "active" ? "active" : "inactive"
+                            }
+                          />
+                        )}
                         {user.status}
                       </button>
                     </div>
@@ -603,9 +655,18 @@ const UsersManagementPage = () => {
                         <button
                           className="btn btn-sm btn-danger"
                           onClick={() => handleDeleteUser(user._id)}
+                          disabled={actionLoading[`delete_${user._id}`]}
                           title="Delete user"
                         >
-                          <AppIcon icon={faTrash} /> Delete
+                          {actionLoading[`delete_${user._id}`] ? (
+                            <span
+                              className="spinner spinner-sm"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <AppIcon icon={faTrash} />
+                          )}{" "}
+                          Delete
                         </button>
                       )}
                     </div>

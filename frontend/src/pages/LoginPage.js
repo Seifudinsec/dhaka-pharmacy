@@ -7,6 +7,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { useAuth } from "../context/AuthContext";
 import AppIcon from "../components/common/AppIcon";
+import FullScreenLoader from "../components/common/FullScreenLoader";
 
 export default function LoginPage() {
   const { login, isAuthenticated, loading } = useAuth();
@@ -32,6 +33,7 @@ export default function LoginPage() {
 
   return (
     <div className="login-page cyber-login-page">
+      <FullScreenLoader visible={loading} text="Signing you in..." />
       <div className="glitch-form-wrapper">
         <div className="glitch-card">
           <div className="card-header">
@@ -94,6 +96,7 @@ export default function LoginPage() {
                   required
                   placeholder=" "
                   className="glitch-input"
+                  disabled={loading}
                 />
                 <label
                   htmlFor="login-username"
@@ -116,6 +119,7 @@ export default function LoginPage() {
                   required
                   placeholder=" "
                   className="glitch-input"
+                  disabled={loading}
                 />
                 <label
                   htmlFor="login-password"
@@ -154,8 +158,6 @@ export default function LoginPage() {
                 </span>
               </button>
             </form>
-
-
           </div>
         </div>
       </div>

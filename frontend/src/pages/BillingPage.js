@@ -11,6 +11,8 @@ import {
 import api from "../utils/api";
 import AppIcon from "../components/common/AppIcon";
 import useDebounce from "../hooks/useDebounce";
+import useDelayedLoading from "../hooks/useDelayedLoading";
+import { SkeletonTable } from "../components/common/SkeletonLoaders";
 
 export default function BillingPage() {
   const [medicines, setMedicines] = useState([]);
@@ -20,10 +22,13 @@ export default function BillingPage() {
   const [notes, setNotes] = useState("");
   const [processing, setProcessing] = useState(false);
   const [lastReceipt, setLastReceipt] = useState(null);
+  const [fetchLoading, setFetchLoading] = useState(false);
 
   const debouncedSearch = useDebounce(search, 200); // Faster debounce for local filtering
+  const showFetchLoader = useDelayedLoading(fetchLoading);
 
   const fetchMedicines = useCallback(async () => {
+    setFetchLoading(true);
     try {
       const { data } = await api.get("/medicines", {
         params: { limit: 500, status: "active" },
@@ -35,6 +40,8 @@ export default function BillingPage() {
       }
     } catch {
       toast.error("Failed to load medicines.");
+    } finally {
+      setFetchLoading(false);
     }
   }, []);
 
@@ -171,7 +178,11 @@ export default function BillingPage() {
           className="table-wrap"
           style={{ maxHeight: 500, overflowY: "auto" }}
         >
-          {!filtered.length ? (
+          {showFetchLoader ? (
+            <div className="loader-fade-in" style={{ padding: 16 }}>
+              <SkeletonTable rows={6} cols={4} />
+            </div>
+          ) : !filtered.length ? (
             <div className="empty-state">
               <div className="empty-icon">
                 <AppIcon icon={faPills} size="xl" tone="muted" />

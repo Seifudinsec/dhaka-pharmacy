@@ -11,6 +11,12 @@ import {
 import AppIcon from "../components/common/AppIcon";
 import api from "../utils/api";
 import toast from "react-hot-toast";
+import {
+  SkeletonTable,
+  SkeletonSummaryCards,
+  SkeletonChart,
+  SkeletonCard,
+} from "../components/common/SkeletonLoaders";
 
 const RANGE_OPTIONS = [
   { value: "7d", label: "Last 7 Days" },
@@ -131,6 +137,7 @@ const ReportsPage = () => {
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
   const [reportData, setReportData] = useState(DEFAULT_REPORT_DATA);
+  const [exportLoading, setExportLoading] = useState(false);
 
   const queryParams = useMemo(
     () => resolveRangePayload(dateRange, customStartDate, customEndDate),
@@ -193,7 +200,7 @@ const ReportsPage = () => {
       toast.error("Please select both start and end date for custom range.");
       return;
     }
-
+    setExportLoading(true);
     try {
       let response;
       try {
@@ -239,6 +246,8 @@ const ReportsPage = () => {
     } catch (error) {
       console.error("Error exporting Excel report:", error);
       toast.error("Failed to export Excel report");
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -247,15 +256,6 @@ const ReportsPage = () => {
 
   const revenueChartMax = Math.max(...revenueDaily, 1);
   const profitChartMax = Math.max(...profitDaily.map((v) => Math.abs(v)), 1);
-
-  if (loading) {
-    return (
-      <div className="page-loading">
-        <div className="loading-spinner"></div>
-        <p>Loading report data...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="reports-page">
@@ -294,260 +294,265 @@ const ReportsPage = () => {
         </div>
 
         <div className="export-actions">
-          <button onClick={exportExcel} className="btn btn-primary">
-            <AppIcon icon={faDownload} className="btn-icon" />
-            Export Excel
+          <button
+            onClick={exportExcel}
+            className="btn btn-primary"
+            disabled={exportLoading || loading}
+          >
+            {exportLoading ? (
+              <>
+                <span className="spinner spinner-sm" aria-hidden="true" />{" "}
+                Generating report...
+              </>
+            ) : (
+              <>
+                <AppIcon icon={faDownload} className="btn-icon" /> Export Excel
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      <div className="summary-cards">
-        <div className="summary-card">
-          <div className="card-icon revenue">
-            <AppIcon icon={faCoins} size="2x" />
-          </div>
-          <div className="card-content">
-            <h3>Total Revenue</h3>
-            <p className="card-value">
-              KES{" "}
-              {(reportData.summary.totalRevenue || 0).toLocaleString("en-KE", {
-                minimumFractionDigits: 2,
-              })}
-            </p>
-            <span className="card-change positive">
-              <AppIcon icon={faArrowTrendUp} />
-              {(reportData.summary.growthRate || 0).toFixed(1)}%
-            </span>
-          </div>
-        </div>
-
-        <div className="summary-card">
-          <div className="card-icon profit">
-            <AppIcon icon={faChartLine} size="2x" />
-          </div>
-          <div className="card-content">
-            <h3>Total Profit</h3>
-            <p className="card-value">
-              KES{" "}
-              {(reportData.summary.totalProfit || 0).toLocaleString("en-KE", {
-                minimumFractionDigits: 2,
-              })}
-            </p>
-            <span className="card-change positive">
-              <AppIcon icon={faArrowTrendUp} />
-              {(reportData.summary.profitMargin || 0).toFixed(1)}% margin
-            </span>
-          </div>
-        </div>
-
-        <div className="summary-card">
-          <div className="card-icon sales">
-            <AppIcon icon={faChartBar} size="2x" />
-          </div>
-          <div className="card-content">
-            <h3>Total Sales</h3>
-            <p className="card-value">{reportData.summary.totalSales}</p>
-            <span className="card-change">
-              Avg: KES{" "}
-              {(reportData.summary.averageSaleValue || 0).toLocaleString(
-                "en-KE",
-                {
-                  minimumFractionDigits: 2,
-                },
-              )}
-            </span>
-          </div>
-        </div>
-
-        <div className="summary-card">
-          <div className="card-icon performance">
-            <AppIcon icon={faBox} size="2x" />
-          </div>
-          <div className="card-content">
-            <h3>Performance</h3>
-            <p className="card-value">{reportData.topMedicines.length} items</p>
-            <span className="card-change">
-              {reportData.lowPerformingMedicines.length} low performers
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-header">
-          <h2>Profit Breakdown</h2>
-        </div>
-        <div className="card-body" style={{ display: "grid", gap: 10 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: 14,
-            }}
-          >
-            <span>Gross Profit (Before refunds)</span>
-            <strong>
-              KES{" "}
-              {(reportData.summary.grossProfit || 0).toLocaleString("en-KE", {
-                minimumFractionDigits: 2,
-              })}
-            </strong>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: 14,
-            }}
-          >
-            <span>Refund Profit Loss</span>
-            <strong style={{ color: "var(--danger)" }}>
-              - KES{" "}
-              {(reportData.summary.refundProfitLoss || 0).toLocaleString(
-                "en-KE",
-                {
-                  minimumFractionDigits: 2,
-                },
-              )}
-            </strong>
-          </div>
-          <div
-            style={{
-              borderTop: "1px solid var(--gray-200)",
-              paddingTop: 10,
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: 15,
-            }}
-          >
-            <span>
-              <strong>Net Profit</strong>
-            </span>
-            <strong>
-              KES{" "}
-              {(reportData.summary.totalProfit || 0).toLocaleString("en-KE", {
-                minimumFractionDigits: 2,
-              })}
-            </strong>
-          </div>
-        </div>
-      </div>
-
-      <div className="charts-section">
-        <div className="chart-container">
-          <h3>Revenue Trends (Net)</h3>
-          <div className="chart-placeholder">
-            <div className="mini-chart">
-              {revenueDaily.slice(-7).map((value, index) => {
-                const height = `${(Math.abs(value || 0) / revenueChartMax) * 100}%`;
-                return (
-                  <div
-                    key={index}
-                    className="chart-bar"
-                    style={{ height }}
-                  ></div>
-                );
-              })}
+      {loading ? (
+        <SkeletonSummaryCards count={4} />
+      ) : (
+        <div className="summary-cards">
+          <div className="summary-card">
+            <div className="card-icon revenue">
+              <AppIcon icon={faCoins} size="2x" />
             </div>
-            <div className="chart-labels">
-              <span>7 days trend</span>
-              <span>
+            <div className="card-content">
+              <h3>Total Revenue</h3>
+              <p className="card-value">
                 KES{" "}
-                {revenueDaily
-                  .slice(-7)
-                  .reduce((a, b) => a + (b || 0), 0)
-                  .toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                {(reportData.summary.totalRevenue || 0).toLocaleString(
+                  "en-KE",
+                  {
+                    minimumFractionDigits: 2,
+                  },
+                )}
+              </p>
+              <span className="card-change positive">
+                <AppIcon icon={faArrowTrendUp} />
+                {(reportData.summary.growthRate || 0).toFixed(1)}%
+              </span>
+            </div>
+          </div>
+
+          <div className="summary-card">
+            <div className="card-icon profit">
+              <AppIcon icon={faChartLine} size="2x" />
+            </div>
+            <div className="card-content">
+              <h3>Total Profit</h3>
+              <p className="card-value">
+                KES{" "}
+                {(reportData.summary.totalProfit || 0).toLocaleString("en-KE", {
+                  minimumFractionDigits: 2,
+                })}
+              </p>
+              <span className="card-change positive">
+                <AppIcon icon={faArrowTrendUp} />
+                {(reportData.summary.profitMargin || 0).toFixed(1)}% margin
+              </span>
+            </div>
+          </div>
+
+          <div className="summary-card">
+            <div className="card-icon sales">
+              <AppIcon icon={faChartBar} size="2x" />
+            </div>
+            <div className="card-content">
+              <h3>Total Sales</h3>
+              <p className="card-value">{reportData.summary.totalSales}</p>
+              <span className="card-change">
+                Avg: KES{" "}
+                {(reportData.summary.averageSaleValue || 0).toLocaleString(
+                  "en-KE",
+                  {
+                    minimumFractionDigits: 2,
+                  },
+                )}
+              </span>
+            </div>
+          </div>
+
+          <div className="summary-card">
+            <div className="card-icon performance">
+              <AppIcon icon={faBox} size="2x" />
+            </div>
+            <div className="card-content">
+              <h3>Performance</h3>
+              <p className="card-value">
+                {reportData.topMedicines.length} items
+              </p>
+              <span className="card-change">
+                {reportData.lowPerformingMedicines.length} low performers
               </span>
             </div>
           </div>
         </div>
+      )}
 
-        <div className="chart-container">
-          <h3>Profit Analysis (Net)</h3>
-          <div className="chart-placeholder">
-            <div className="mini-chart">
-              {profitDaily.slice(-7).map((value, index) => {
-                const height = `${(Math.abs(value || 0) / profitChartMax) * 100}%`;
-                return (
-                  <div
-                    key={index}
-                    className="chart-bar profit"
-                    style={{ height }}
-                  ></div>
-                );
-              })}
-            </div>
-            <div className="chart-labels">
-              <span>7 days trend</span>
-              <span>
+      {loading ? (
+        <SkeletonCard lines={3} showHeader={true} />
+      ) : (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-header">
+            <h2>Profit Breakdown</h2>
+          </div>
+          <div className="card-body" style={{ display: "grid", gap: 10 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 14,
+              }}
+            >
+              <span>Gross Profit (Before refunds)</span>
+              <strong>
                 KES{" "}
-                {profitDaily
-                  .slice(-7)
-                  .reduce((a, b) => a + (b || 0), 0)
-                  .toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                {(reportData.summary.grossProfit || 0).toLocaleString("en-KE", {
+                  minimumFractionDigits: 2,
+                })}
+              </strong>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 14,
+              }}
+            >
+              <span>Refund Profit Loss</span>
+              <strong style={{ color: "var(--danger)" }}>
+                - KES{" "}
+                {(reportData.summary.refundProfitLoss || 0).toLocaleString(
+                  "en-KE",
+                  {
+                    minimumFractionDigits: 2,
+                  },
+                )}
+              </strong>
+            </div>
+            <div
+              style={{
+                borderTop: "1px solid var(--gray-200)",
+                paddingTop: 10,
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 15,
+              }}
+            >
+              <span>
+                <strong>Net Profit</strong>
               </span>
+              <strong>
+                KES{" "}
+                {(reportData.summary.totalProfit || 0).toLocaleString("en-KE", {
+                  minimumFractionDigits: 2,
+                })}
+              </strong>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="tables-section">
-        <div className="table-container">
-          <h3>Top Selling Medicines</h3>
-          <div className="table-wrap table-responsive-cards">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Medicine Name</th>
-                  <th>Units Sold</th>
-                  <th>Revenue</th>
-                  <th>Profit</th>
-                  <th>Profit Margin</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(reportData.topMedicines || []).map((medicine, index) => (
-                  <tr key={index}>
-                    <td data-label="Medicine">{medicine.name || "Unknown"}</td>
-                    <td data-label="Units Sold">{medicine.unitsSold || 0}</td>
-                    <td data-label="Revenue">
-                      KES{" "}
-                      {(medicine.revenue || 0).toLocaleString("en-KE", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td data-label="Profit">
-                      KES{" "}
-                      {(medicine.profit || 0).toLocaleString("en-KE", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td data-label="Margin">
-                      {(medicine.profitMargin || 0).toFixed(1)}%
-                    </td>
+      {loading ? (
+        <div className="charts-section loader-fade-in">
+          <div className="chart-container">
+            <SkeletonChart />
+          </div>
+          <div className="chart-container">
+            <SkeletonChart />
+          </div>
+        </div>
+      ) : (
+        <div className="charts-section">
+          <div className="chart-container">
+            <h3>Revenue Trends (Net)</h3>
+            <div className="chart-placeholder">
+              <div className="mini-chart">
+                {revenueDaily.slice(-7).map((value, index) => {
+                  const height = `${(Math.abs(value || 0) / revenueChartMax) * 100}%`;
+                  return (
+                    <div
+                      key={index}
+                      className="chart-bar"
+                      style={{ height }}
+                    ></div>
+                  );
+                })}
+              </div>
+              <div className="chart-labels">
+                <span>7 days trend</span>
+                <span>
+                  KES{" "}
+                  {revenueDaily
+                    .slice(-7)
+                    .reduce((a, b) => a + (b || 0), 0)
+                    .toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="chart-container">
+            <h3>Profit Analysis (Net)</h3>
+            <div className="chart-placeholder">
+              <div className="mini-chart">
+                {profitDaily.slice(-7).map((value, index) => {
+                  const height = `${(Math.abs(value || 0) / profitChartMax) * 100}%`;
+                  return (
+                    <div
+                      key={index}
+                      className="chart-bar profit"
+                      style={{ height }}
+                    ></div>
+                  );
+                })}
+              </div>
+              <div className="chart-labels">
+                <span>7 days trend</span>
+                <span>
+                  KES{" "}
+                  {profitDaily
+                    .slice(-7)
+                    .reduce((a, b) => a + (b || 0), 0)
+                    .toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="tables-section loader-fade-in">
+          <div className="table-container">
+            <SkeletonTable rows={5} cols={5} />
+          </div>
+          <div className="table-container">
+            <SkeletonTable rows={5} cols={5} />
+          </div>
+        </div>
+      ) : (
+        <div className="tables-section">
+          <div className="table-container">
+            <h3>Top Selling Medicines</h3>
+            <div className="table-wrap table-responsive-cards">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Medicine Name</th>
+                    <th>Units Sold</th>
+                    <th>Revenue</th>
+                    <th>Profit</th>
+                    <th>Profit Margin</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="table-container">
-          <h3>Low Performing Items</h3>
-          <div className="table-wrap table-responsive-cards">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Medicine Name</th>
-                  <th>Units Sold</th>
-                  <th>Revenue</th>
-                  <th>Stock Status</th>
-                  <th>Last Sale</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(reportData.lowPerformingMedicines || []).map(
-                  (medicine, index) => (
+                </thead>
+                <tbody>
+                  {(reportData.topMedicines || []).map((medicine, index) => (
                     <tr key={index}>
                       <td data-label="Medicine">
                         {medicine.name || "Unknown"}
@@ -559,26 +564,75 @@ const ReportsPage = () => {
                           minimumFractionDigits: 2,
                         })}
                       </td>
-                      <td data-label="Stock Status">
-                        <span
-                          className={`status-badge ${medicine.stockStatus || "unknown"}`}
-                        >
-                          {medicine.stockStatus || "Unknown"}
-                        </span>
+                      <td data-label="Profit">
+                        KES{" "}
+                        {(medicine.profit || 0).toLocaleString("en-KE", {
+                          minimumFractionDigits: 2,
+                        })}
                       </td>
-                      <td data-label="Last Sale">
-                        {medicine.lastSale
-                          ? format(new Date(medicine.lastSale), "MMM dd, yyyy")
-                          : "Never"}
+                      <td data-label="Margin">
+                        {(medicine.profitMargin || 0).toFixed(1)}%
                       </td>
                     </tr>
-                  ),
-                )}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="table-container">
+            <h3>Low Performing Items</h3>
+            <div className="table-wrap table-responsive-cards">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Medicine Name</th>
+                    <th>Units Sold</th>
+                    <th>Revenue</th>
+                    <th>Stock Status</th>
+                    <th>Last Sale</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(reportData.lowPerformingMedicines || []).map(
+                    (medicine, index) => (
+                      <tr key={index}>
+                        <td data-label="Medicine">
+                          {medicine.name || "Unknown"}
+                        </td>
+                        <td data-label="Units Sold">
+                          {medicine.unitsSold || 0}
+                        </td>
+                        <td data-label="Revenue">
+                          KES{" "}
+                          {(medicine.revenue || 0).toLocaleString("en-KE", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td data-label="Stock Status">
+                          <span
+                            className={`status-badge ${medicine.stockStatus || "unknown"}`}
+                          >
+                            {medicine.stockStatus || "Unknown"}
+                          </span>
+                        </td>
+                        <td data-label="Last Sale">
+                          {medicine.lastSale
+                            ? format(
+                                new Date(medicine.lastSale),
+                                "MMM dd, yyyy",
+                              )
+                            : "Never"}
+                        </td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
