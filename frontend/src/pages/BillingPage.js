@@ -28,7 +28,6 @@ export default function BillingPage() {
   const [cart, setCart] = useState([]);
   const [notes, setNotes] = useState("");
   const [specialDrugDetails, setSpecialDrugDetails] = useState({
-    drugName: "",
     buyerName: "",
     buyerIdNumber: "",
     buyerPhoneNumber: "",
@@ -108,9 +107,8 @@ export default function BillingPage() {
       (v) => v.trim() !== "",
     );
     if (isSpecialDrugFilled) {
-      const { drugName, buyerName, buyerIdNumber, buyerPhoneNumber } =
-        specialDrugDetails;
-      if (!drugName || !buyerName || !buyerIdNumber || !buyerPhoneNumber) {
+      const { buyerName, buyerIdNumber, buyerPhoneNumber } = specialDrugDetails;
+      if (!buyerName || !buyerIdNumber || !buyerPhoneNumber) {
         return toast.error(
           "Please fill all special drug details or clear them all.",
         );
@@ -153,7 +151,6 @@ export default function BillingPage() {
         setCart([]);
         setNotes("");
         setSpecialDrugDetails({
-          drugName: "",
           buyerName: "",
           buyerIdNumber: "",
           buyerPhoneNumber: "",
@@ -339,28 +336,6 @@ export default function BillingPage() {
                   Special Drug Details (Controlled)
                 </h4>
                 <div className="special-drug-grid">
-                  <div className="form-group mb-2">
-                    <label className="text-xs text-muted mb-1 d-block">
-                      Drug Name
-                    </label>
-                    <div className="input-with-icon-sm">
-                      <AppIcon
-                        icon={faPrescriptionBottleMedical}
-                        className="input-icon-sm"
-                      />
-                      <input
-                        className="form-control form-control-sm"
-                        placeholder="Drug name..."
-                        value={specialDrugDetails.drugName}
-                        onChange={(e) =>
-                          setSpecialDrugDetails({
-                            ...specialDrugDetails,
-                            drugName: e.target.value,
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
                   <div className="form-group mb-2">
                     <label className="text-xs text-muted mb-1 d-block">
                       Buyer Name

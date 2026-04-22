@@ -24,22 +24,25 @@ export default function SpecialDrugsPage() {
   const [pagination, setPagination] = useState({ page: 1, pages: 1 });
   const debouncedSearch = useDebounce(search, 300);
 
-  const fetchRecords = useCallback(async (page = 1) => {
-    setLoading(true);
-    try {
-      const { data } = await api.get("/special-drugs", {
-        params: { search: debouncedSearch, page, limit: 20 },
-      });
-      if (data.success) {
-        setRecords(data.data);
-        setPagination(data.pagination);
+  const fetchRecords = useCallback(
+    async (page = 1) => {
+      setLoading(true);
+      try {
+        const { data } = await api.get("/special-drugs", {
+          params: { search: debouncedSearch, page, limit: 20 },
+        });
+        if (data.success) {
+          setRecords(data.data);
+          setPagination(data.pagination);
+        }
+      } catch {
+        toast.error("Failed to load records.");
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      toast.error("Failed to load records.");
-    } finally {
-      setLoading(false);
-    }
-  }, [debouncedSearch]);
+    },
+    [debouncedSearch],
+  );
 
   useEffect(() => {
     fetchRecords(1);
@@ -63,7 +66,10 @@ export default function SpecialDrugsPage() {
       <div className="card">
         <div className="card-header d-flex justify-content-between align-items-center">
           <h2>
-            <AppIcon icon={faPrescriptionBottleMedical} className="header-inline-icon" />{" "}
+            <AppIcon
+              icon={faPrescriptionBottleMedical}
+              className="header-inline-icon"
+            />{" "}
             Special Drugs Section
           </h2>
         </div>
@@ -89,9 +95,15 @@ export default function SpecialDrugsPage() {
               </div>
             ) : !records.length ? (
               <div className="empty-state py-5">
-                <AppIcon icon={faPrescriptionBottleMedical} size="xl" tone="muted" />
+                <AppIcon
+                  icon={faPrescriptionBottleMedical}
+                  size="xl"
+                  tone="muted"
+                />
                 <h3>No records found</h3>
-                <p className="text-muted">Special drug records will appear here after sales.</p>
+                <p className="text-muted">
+                  Special drug records will appear here after sales.
+                </p>
               </div>
             ) : (
               <table>
@@ -100,6 +112,7 @@ export default function SpecialDrugsPage() {
                     <th>Date</th>
                     <th>Drug Name</th>
                     <th>Buyer Name</th>
+                    <th>Amount</th>
                     <th>ID Number</th>
                     <th>Phone</th>
                     <th>Recorded By</th>
@@ -115,7 +128,10 @@ export default function SpecialDrugsPage() {
                             {new Date(r.createdAt).toLocaleDateString()}
                           </span>
                           <span className="text-xs text-muted">
-                            {new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(r.createdAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
                           </span>
                         </div>
                       </td>
@@ -127,6 +143,11 @@ export default function SpecialDrugsPage() {
                           <AppIcon icon={faUser} size="xs" tone="muted" />
                           {r.buyerName}
                         </div>
+                      </td>
+                      <td data-label="Amount">
+                        <span className="font-bold text-secondary">
+                          KES {Number(r.amount || 0).toFixed(2)}
+                        </span>
                       </td>
                       <td data-label="ID Number">
                         <div className="d-flex align-items-center gap-2">

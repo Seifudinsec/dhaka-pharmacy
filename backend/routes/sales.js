@@ -77,9 +77,8 @@ router.post("/", async (req, res) => {
     }
 
     if (specialDrugDetails) {
-      const { drugName, buyerName, buyerIdNumber, buyerPhoneNumber } =
-        specialDrugDetails;
-      if (!drugName || !buyerName || !buyerIdNumber || !buyerPhoneNumber) {
+      const { buyerName, buyerIdNumber, buyerPhoneNumber } = specialDrugDetails;
+      if (!buyerName || !buyerIdNumber || !buyerPhoneNumber) {
         return res.status(400).json({
           success: false,
           message:
@@ -192,10 +191,15 @@ router.post("/", async (req, res) => {
       );
 
       if (specialDrugDetails) {
+        // Automatically compile drug names from the sale items
+        const drugNames = saleItems.map((item) => item.medicineName).join(", ");
+
         const [record] = await SpecialDrug.create(
           [
             {
               ...specialDrugDetails,
+              drugName: drugNames,
+              amount: sale.total,
               sale: sale._id,
               recordedBy: req.user._id,
             },
