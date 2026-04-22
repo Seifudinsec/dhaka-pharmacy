@@ -397,12 +397,14 @@ const splitPreviewRows = (classifiedRows, limitPerType = 200) => {
     if (row.classification === "NEW") {
       if (rowsByType.new.length < limitPerType) rowsByType.new.push(mapped);
     } else if (row.classification === "UPDATE") {
-      if (rowsByType.update.length < limitPerType) rowsByType.update.push(mapped);
+      if (rowsByType.update.length < limitPerType)
+        rowsByType.update.push(mapped);
     } else if (row.classification === "DUPLICATE") {
       if (rowsByType.duplicate.length < limitPerType)
         rowsByType.duplicate.push(mapped);
     } else {
-      if (rowsByType.invalid.length < limitPerType) rowsByType.invalid.push(mapped);
+      if (rowsByType.invalid.length < limitPerType)
+        rowsByType.invalid.push(mapped);
     }
   }
 
@@ -421,19 +423,33 @@ const buildDuplicateFileDetails = (historyDoc) => {
 };
 
 const runPreview = async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, message: "No file uploaded." });
+  let rows = [];
+  let headerMapping = {};
+  let fileName = "json_import";
+  let fileHash = "no_hash";
+
+  if (req.file) {
+    const parsed = parseWorkbookRows(req.file.buffer);
+    if (parsed.error) {
+      return res.status(400).json({ success: false, message: parsed.error });
+    }
+    rows = parsed.rows;
+    headerMapping = parsed.headerMapping;
+    fileName = req.file.originalname;
+    fileHash = fileHashFromBuffer(req.file.buffer);
+  } else if (req.body.rows && Array.isArray(req.body.rows)) {
+    rows = req.body.rows;
+    headerMapping = req.body.headerMapping || {};
+    fileName = req.body.fileName || "json_import";
+    fileHash = req.body.fileHash || "no_hash";
+  } else {
+    return res
+      .status(400)
+      .json({ success: false, message: "No file or data provided." });
   }
 
-  const parsed = parseWorkbookRows(req.file.buffer);
-  if (parsed.error) {
-    return res.status(400).json({ success: false, message: parsed.error });
-  }
-
-  const fileHash = fileHashFromBuffer(req.file.buffer);
-
-  const normalizedRows = parsed.rows.map((row) =>
-    validateAndNormalizeRow(row, parsed.headerMapping),
+  const normalizedRows = rows.map((row) =>
+    validateAndNormalizeRow(row, headerMapping),
   );
 
   const classifiedRows = await classifyRows(normalizedRows);
@@ -445,7 +461,7 @@ const runPreview = async (req, res) => {
     message: "Import preview generated. Review and confirm before applying.",
     importId,
     fileHash,
-    fileName: req.file.originalname,
+    fileName,
     duplicateFile: false,
     duplicateFileDetails: null,
     summary,
@@ -459,7 +475,9 @@ const insertImportRowsInBatches = async (rows, session) => {
   for (let i = 0; i < rows.length; i += chunkSize) {
     const chunk = rows.slice(i, i + chunkSize);
     if (chunk.length) {
-      const options = session ? { session, ordered: false } : { ordered: false };
+      const options = session
+        ? { session, ordered: false }
+        : { ordered: false };
       await ImportRow.insertMany(chunk, options);
     }
   }
@@ -553,9 +571,10 @@ const upsertMedicineForImport = async (rowData, importId, session) => {
     );
   }
 
-  const nextStock = Number(existing.stock || 0) === 0
-    ? rowData.quantity
-    : Number(existing.stock || 0) + rowData.quantity;
+  const nextStock =
+    Number(existing.stock || 0) === 0
+      ? rowData.quantity
+      : Number(existing.stock || 0) + rowData.quantity;
 
   await Medicine.updateOne(
     { _id: existing._id },
@@ -582,15 +601,13 @@ const upsertMedicineForImport = async (rowData, importId, session) => {
 };
 
 const runCommit = async (req, res, { legacy = false } = {}) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, message: "No file uploaded." });
-  }
-
   const forceImport = String(req.body?.forceImport || "false") === "true";
   let selectedDuplicateRows = [];
   try {
     selectedDuplicateRows = req.body?.selectedDuplicateRows
-      ? JSON.parse(req.body.selectedDuplicateRows)
+      ? typeof req.body.selectedDuplicateRows === "string"
+        ? JSON.parse(req.body.selectedDuplicateRows)
+        : req.body.selectedDuplicateRows
       : [];
   } catch (e) {
     selectedDuplicateRows = [];
@@ -610,14 +627,33 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
     });
   }
 
-  const parsed = parseWorkbookRows(req.file.buffer);
-  if (parsed.error) {
-    return res.status(400).json({ success: false, message: parsed.error });
+  let rows = [];
+  let headerMapping = {};
+  let fileName = "json_import";
+  let fileHash = "no_hash";
+
+  if (req.file) {
+    const parsed = parseWorkbookRows(req.file.buffer);
+    if (parsed.error) {
+      return res.status(400).json({ success: false, message: parsed.error });
+    }
+    rows = parsed.rows;
+    headerMapping = parsed.headerMapping;
+    fileName = req.file.originalname;
+    fileHash = fileHashFromBuffer(req.file.buffer);
+  } else if (req.body.rows && Array.isArray(req.body.rows)) {
+    rows = req.body.rows;
+    headerMapping = req.body.headerMapping || {};
+    fileName = req.body.fileName || "json_import";
+    fileHash = req.body.fileHash || "no_hash";
+  } else {
+    return res
+      .status(400)
+      .json({ success: false, message: "No file or data provided." });
   }
 
-  const fileHash = fileHashFromBuffer(req.file.buffer);
-  const normalizedRows = parsed.rows.map((row) =>
-    validateAndNormalizeRow(row, parsed.headerMapping),
+  const normalizedRows = rows.map((row) =>
+    validateAndNormalizeRow(row, headerMapping),
   );
   const classifiedRows = await classifyRows(normalizedRows);
   const previewSummary = summarizeClassifications(classifiedRows);
@@ -821,7 +857,10 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
       });
     } catch (auditError) {}
   } catch (error) {
-    if (error?.code === 11000 && String(error?.message || "").includes("importId")) {
+    if (
+      error?.code === 11000 &&
+      String(error?.message || "").includes("importId")
+    ) {
       const existing = await ImportHistory.findOne({ importId }).lean();
       if (existing?.status === "completed") {
         return res.json({
@@ -840,7 +879,8 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
       }
       return res.status(409).json({
         success: false,
-        message: "Import request is already in progress. Please wait and refresh.",
+        message:
+          "Import request is already in progress. Please wait and refresh.",
         importId,
       });
     }
@@ -877,7 +917,8 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
             }
           : undefined,
     });
-  } finally {}
+  } finally {
+  }
 
   return res.json({
     success: true,

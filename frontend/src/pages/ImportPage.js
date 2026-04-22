@@ -2,7 +2,10 @@ import React, { useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import {
+  faChevronDown,
+  faChevronUp,
   faCircleCheck,
+  faCircleInfo,
   faDownload,
   faFileArrowUp,
   faFileCircleXmark,
@@ -12,9 +15,13 @@ import {
   faRocket,
   faTriangleExclamation,
   faXmark,
+  faBox,
+  faTag,
+  faCalendarDay,
 } from "@fortawesome/free-solid-svg-icons";
 import api from "../utils/api";
 import AppIcon from "../components/common/AppIcon";
+import "./ImportPage.css";
 
 const TEMPLATE_HEADERS = [
   "#",
@@ -31,8 +38,47 @@ const SAMPLE_DATA = [
   [3, "Ibuprofen 400mg", 75, "BT2026003", "15/Sep/2025", 68, ""],
 ];
 
+const HEADER_MAP = {
+  name: [
+    "product_name",
+    "item_name",
+    "medicine_name",
+    "item",
+    "medicine",
+    "name",
+    "description",
+    "productname",
+  ],
+  stock: ["quantity", "stock", "qty", "count", "amount", "balance"],
+  batch: ["batch_number", "batch", "lot", "batch_no", "lot_no"],
+  expiry: ["expiry_date", "expirydate", "expiry", "exp_date", "exp"],
+  buyingPrice: [
+    "buying_price_kes",
+    "buying_price",
+    "buying",
+    "cost_price",
+    "cost",
+  ],
+  sellingPrice: [
+    "selling_price_kes",
+    "selling_price",
+    "selling price kes",
+    "price",
+    "selling",
+    "rate",
+  ],
+};
+
+const normalizeKey = (val = "") =>
+  String(val)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
 export default function ImportPage() {
   const [file, setFile] = useState(null);
+  const [parsedData, setParsedData] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -41,6 +87,7 @@ export default function ImportPage() {
   const [forceImport, setForceImport] = useState(false);
   const [selectedDuplicateRows, setSelectedDuplicateRows] = useState([]);
   const [showDuplicateFileRows, setShowDuplicateFileRows] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
   const inputRef = useRef();
 
   const getRowsByType = () => {
@@ -59,7 +106,78 @@ export default function ImportPage() {
     return grouped;
   };
 
-  const handleFile = (f) => {
+  const parseExcelFile = (f) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: "array", cellDates: true });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const matrix = XLSX.utils.sheet_to_json(sheet, {
+            header: 1,
+            defval: "",
+          });
+
+          if (!matrix.length) {
+            reject(new Error("Excel file is empty."));
+            return;
+          }
+
+          let headerRowIndex = -1;
+          let headerMapping = {};
+
+          for (let i = 0; i < Math.min(matrix.length, 20); i++) {
+            const normalizedCells = matrix[i].map((c) => normalizeKey(c));
+            const mapping = {};
+
+            for (const [canonical, aliases] of Object.entries(HEADER_MAP)) {
+              const foundIdx = normalizedCells.findIndex((c) =>
+                aliases.includes(c),
+              );
+              if (foundIdx !== -1) {
+                mapping[canonical] = matrix[i][foundIdx];
+              }
+            }
+
+            if (mapping.name || mapping.stock) {
+              headerRowIndex = i;
+              headerMapping = mapping;
+              break;
+            }
+          }
+
+          if (headerRowIndex === -1) {
+            reject(new Error("Required columns (Name, Quantity) not found."));
+            return;
+          }
+
+          const rows = matrix
+            .slice(headerRowIndex + 1)
+            .filter((cells) => cells.some((cell) => String(cell).trim() !== ""))
+            .map((cells, idx) => {
+              const rowObj = {};
+              matrix[headerRowIndex].forEach((h, colIdx) => {
+                rowObj[h] = cells[colIdx];
+              });
+              return {
+                rowNumber: headerRowIndex + idx + 2,
+                row: rowObj,
+              };
+            });
+
+          resolve({ rows, headerMapping });
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsArrayBuffer(f);
+    });
+  };
+
+  const handleFile = async (f) => {
     if (!f) return;
     const ext = f.name.split(".").pop().toLowerCase();
     if (!["xlsx", "xls"].includes(ext)) {
@@ -70,12 +188,21 @@ export default function ImportPage() {
       toast.error("File too large. Maximum size is 5MB.");
       return;
     }
-    setFile(f);
-    setResult(null);
-    setPreview(null);
-    setForceImport(false);
-    setSelectedDuplicateRows([]);
-    setShowDuplicateFileRows(false);
+
+    const loadingToast = toast.loading("Parsing Excel file...");
+    try {
+      const parsed = await parseExcelFile(f);
+      setFile(f);
+      setParsedData(parsed);
+      setResult(null);
+      setPreview(null);
+      setForceImport(false);
+      setSelectedDuplicateRows([]);
+      setShowDuplicateFileRows(false);
+      toast.success("File parsed successfully", { id: loadingToast });
+    } catch (err) {
+      toast.error(err.message || "Failed to parse file", { id: loadingToast });
+    }
   };
 
   const handleDrop = (e) => {
@@ -86,7 +213,7 @@ export default function ImportPage() {
   };
 
   const requestPreview = async () => {
-    if (!file) {
+    if (!parsedData) {
       toast.error("Please select a file first.");
       return;
     }
@@ -98,17 +225,14 @@ export default function ImportPage() {
     setSelectedDuplicateRows([]);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const { data } = await api.post("/import/preview", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+      const { data } = await api.post("/import/preview", {
+        rows: parsedData.rows,
+        headerMapping: parsedData.headerMapping,
+        fileName: file.name,
       });
       setPreview(data);
       setSelectedDuplicateRows([]);
       toast.success("Preview ready. Confirm to apply import.");
-      if (data.duplicateFile) {
-        toast.error("This file has already been imported. Use force import to continue.");
-      }
     } catch (err) {
       toast.error(err.response?.data?.message || "Preview failed.");
     } finally {
@@ -117,25 +241,26 @@ export default function ImportPage() {
   };
 
   const handleConfirmImport = async () => {
-    if (!file || !preview) return;
+    if (!parsedData || !preview) return;
     setCommitting(true);
     setResult(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("confirm", "true");
-      formData.append("forceImport", forceImport ? "true" : "false");
-      formData.append(
-        "selectedDuplicateRows",
-        JSON.stringify(selectedDuplicateRows),
+      const { data } = await api.post(
+        "/import/commit",
+        {
+          rows: parsedData.rows,
+          headerMapping: parsedData.headerMapping,
+          fileName: file.name,
+          confirm: "true",
+          forceImport: forceImport ? "true" : "false",
+          selectedDuplicateRows: selectedDuplicateRows,
+          importId: preview.importId,
+        },
+        {
+          timeout: 180000,
+        },
       );
-      if (preview.importId) formData.append("importId", preview.importId);
-
-      const { data } = await api.post("/import/commit", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-        timeout: 180000,
-      });
 
       setResult(data);
       setPreview(null);
@@ -148,24 +273,7 @@ export default function ImportPage() {
       );
     } catch (err) {
       const serverData = err.response?.data;
-      if (serverData?.code === "DUPLICATE_FILE") {
-        setPreview((prev) =>
-          prev
-            ? {
-                ...prev,
-                duplicateFile: true,
-                duplicateFileDetails: serverData.duplicateFileDetails,
-              }
-            : prev,
-        );
-      }
       toast.error(serverData?.message || err.message || "Import failed.");
-      if (serverData?.details?.code) {
-        console.error("Import commit error:", serverData.details);
-      }
-      if (!serverData) {
-        console.error("Import commit request failed without response:", err);
-      }
     } finally {
       setCommitting(false);
     }
@@ -173,6 +281,7 @@ export default function ImportPage() {
 
   const clearSelection = () => {
     setFile(null);
+    setParsedData(null);
     setResult(null);
     setPreview(null);
     setForceImport(false);
@@ -201,129 +310,111 @@ export default function ImportPage() {
   };
 
   return (
-    <div style={{ maxWidth: 760 }}>
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-header">
-          <h2>
-            <AppIcon icon={faFileLines} className="header-inline-icon" /> Import
-            Instructions
-          </h2>
+    <div className="import-page-container">
+      <div
+        className="instruction-toggle"
+        onClick={() => setShowInstructions(!showInstructions)}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <AppIcon icon={faFileLines} tone="primary" size="lg" />
+          <strong style={{ fontSize: 16 }}>
+            Import Instructions & Guidelines
+          </strong>
         </div>
-        <div className="card-body">
-          <div className="alert alert-info" style={{ marginBottom: 16 }}>
-            Upload an Excel file to bulk-add or update medicines. Existing
-            product batches (matched by Product Name + Batch Number + Expiry
-            Date) will be stock-updated; new product batches will be inserted.
-          </div>
-          <p
-            style={{
-              fontSize: 14,
-              marginBottom: 12,
-              color: "var(--gray-700)",
-            }}
-          >
-            Your Excel file must follow this structure:
-          </p>
-          <div className="table-wrap">
-            <table
-              style={{ width: "auto", marginBottom: 16, borderCollapse: "collapse" }}
-            >
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "left", padding: "8px" }}>Column</th>
-                  <th style={{ textAlign: "left", padding: "8px" }}>Type</th>
-                  <th style={{ textAlign: "left", padding: "8px" }}>Rules</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>
-                    <code style={{ background: "var(--gray-100)", padding: "1px 6px", borderRadius: 4 }}>
-                      Product Name
-                    </code>
-                  </td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>Text</td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>
-                    Required, non-empty
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>
-                    <code style={{ background: "var(--gray-100)", padding: "1px 6px", borderRadius: 4 }}>
-                      Quantity
-                    </code>
-                  </td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>Number</td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>
-                    Required, 0 or more
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>
-                    <code style={{ background: "var(--gray-100)", padding: "1px 6px", borderRadius: 4 }}>
-                      Batch Number
-                    </code>
-                  </td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>Text</td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>
-                    Required, non-empty
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>
-                    <code style={{ background: "var(--gray-100)", padding: "1px 6px", borderRadius: 4 }}>
-                      Expiry Date
-                    </code>
-                  </td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>Date</td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>
-                    Required, format{" "}
-                    <code style={{ background: "var(--gray-100)", padding: "1px 6px", borderRadius: 4 }}>
-                      dd/mmm/yyyy
-                    </code>{" "}
-                    (e.g. 31/Mar/2026)
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>
-                    <code style={{ background: "var(--gray-100)", padding: "1px 6px", borderRadius: 4 }}>
-                      Buying Price
-                    </code>
-                  </td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>Number</td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>
-                    Required (e.g. 40)
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>
-                    <code style={{ background: "var(--gray-100)", padding: "1px 6px", borderRadius: 4 }}>
-                      Selling Price (KES)
-                    </code>
-                  </td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>Number</td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--gray-100)" }}>
-                    Optional: If blank, defaults to Buying x 1.4
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p style={{ fontSize: 13, color: "var(--gray-600)", marginBottom: 14 }}>
-            Note: a title row above headers is allowed. The system auto-detects
-            the header row and shows a preview before writing data.
-          </p>
-          <button className="btn btn-secondary" onClick={downloadTemplate}>
-            <AppIcon icon={faDownload} /> Download Template
-          </button>
-        </div>
+        <AppIcon
+          icon={showInstructions ? faChevronUp : faChevronDown}
+          tone="muted"
+        />
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
+      {showInstructions && (
+        <div className="instructions-content">
+          <div className="card">
+            <div className="card-body">
+              <div className="alert alert-info" style={{ marginBottom: 16 }}>
+                <AppIcon icon={faCircleInfo} style={{ marginRight: 8 }} />
+                Bulk-add or update medicines. Existing products (matched by
+                Name, Batch, and Expiry) will be updated; others will be
+                created.
+              </div>
+
+              <div
+                className="table-wrap"
+                style={{ borderRadius: 8, border: "1px solid var(--gray-200)" }}
+              >
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Rules</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <code>Product Name</code>
+                      </td>
+                      <td>Text</td>
+                      <td>Required, non-empty</td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <code>Quantity</code>
+                      </td>
+                      <td>Number</td>
+                      <td>Required, 0 or more</td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <code>Batch Number</code>
+                      </td>
+                      <td>Text</td>
+                      <td>Required</td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <code>Expiry Date</code>
+                      </td>
+                      <td>Date</td>
+                      <td>Required (e.g. 31/Mar/2026)</td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <code>Buying Price</code>
+                      </td>
+                      <td>Number</td>
+                      <td>Required</td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <code>Selling Price</code>
+                      </td>
+                      <td>Number</td>
+                      <td>Optional (Defaults to Buying x 1.4)</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ marginTop: 20 }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={downloadTemplate}
+                >
+                  <AppIcon icon={faDownload} /> Download Excel Template
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="card" style={{ marginBottom: 24 }}>
         <div className="card-header">
           <h2>
-            <AppIcon icon={faFileImport} className="header-inline-icon" /> Upload
-            Excel File
+            <AppIcon icon={faFileImport} className="header-inline-icon" /> 1.
+            Upload Excel File
           </h2>
         </div>
         <div className="card-body">
@@ -338,39 +429,48 @@ export default function ImportPage() {
             onClick={() => inputRef.current?.click()}
           >
             <div className="drop-icon">
-              <AppIcon icon={faFolderOpen} size="xl" tone="primary" />
+              <AppIcon icon={faFolderOpen} size="xl" />
             </div>
             {file ? (
               <>
                 <p>
-                  <strong style={{ color: "var(--primary)" }}>
-                    <AppIcon icon={faFileArrowUp} tone="primary" /> {file.name}
+                  <strong style={{ color: "var(--primary)", fontSize: 16 }}>
+                    <AppIcon icon={faFileArrowUp} /> {file.name}
                   </strong>
                 </p>
                 <p
                   style={{
-                    fontSize: 12,
+                    fontSize: 13,
                     marginTop: 4,
                     color: "var(--gray-500)",
                   }}
                 >
-                  {(file.size / 1024).toFixed(1)} KB — click to change
+                  {(file.size / 1024).toFixed(1)} KB —{" "}
+                  {parsedData?.rows.length || 0} rows found
+                </p>
+                <p
+                  style={{
+                    fontSize: 11,
+                    marginTop: 8,
+                    color: "var(--gray-400)",
+                  }}
+                >
+                  Click to change file
                 </p>
               </>
             ) : (
               <>
-                <p>
-                  <strong>Click to browse</strong> or drag &amp; drop your Excel
-                  file here
+                <p style={{ fontSize: 16, fontWeight: 600 }}>
+                  Click to browse or drag & drop
                 </p>
                 <p
                   style={{
-                    fontSize: 12,
+                    fontSize: 13,
                     marginTop: 6,
                     color: "var(--gray-400)",
                   }}
                 >
-                  .xlsx or .xls — max 5 MB
+                  Excel files (.xlsx, .xls) — max 5 MB
                 </p>
               </>
             )}
@@ -383,93 +483,46 @@ export default function ImportPage() {
             />
           </div>
 
-          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-            <button
-              className="btn btn-primary"
-              onClick={requestPreview}
-              disabled={!file || previewing || committing}
-            >
-              {previewing ? (
-                <>
-                  <span className="spinner spinner-sm" /> Previewing...
-                </>
-              ) : (
-                <>
-                  <AppIcon icon={faRocket} /> Preview Import
-                </>
-              )}
-            </button>
-            {file && (
-              <button className="btn btn-secondary" onClick={clearSelection}>
+          {file && (
+            <div className="action-bar">
+              <button
+                className="btn btn-primary"
+                onClick={requestPreview}
+                disabled={previewing || committing}
+                style={{ flex: 1 }}
+              >
+                {previewing ? (
+                  <>
+                    <span className="spinner spinner-sm" /> Processing...
+                  </>
+                ) : (
+                  <>
+                    <AppIcon icon={faRocket} /> Generate Preview
+                  </>
+                )}
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={clearSelection}
+                disabled={previewing || committing}
+              >
                 <AppIcon icon={faXmark} /> Clear
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
       {preview && (
-        <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card" style={{ marginBottom: 24 }}>
           <div className="card-header">
             <h2>
-              <AppIcon icon={faFileImport} className="header-inline-icon" /> Import
-              Preview
+              <AppIcon icon={faFileImport} className="header-inline-icon" /> 2.
+              Import Preview
             </h2>
           </div>
           <div className="card-body">
-            <div className="alert alert-info" style={{ marginBottom: 16 }}>
-              No database changes have been made yet. Confirm to apply this import.
-            </div>
-
-            {preview.duplicateFile && (
-              <div className="alert alert-error" style={{ marginBottom: 16 }}>
-                This file has already been imported.
-                {preview.duplicateFileDetails?.importId && (
-                  <div style={{ marginTop: 8, fontSize: 13 }}>
-                    Previous Import ID: {preview.duplicateFileDetails.importId}
-                  </div>
-                )}
-                <div style={{ marginTop: 10 }}>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => setShowDuplicateFileRows((prev) => !prev)}
-                  >
-                    {showDuplicateFileRows
-                      ? "Hide duplicated file rows"
-                      : "View duplicated file rows"}
-                  </button>
-                </div>
-                {showDuplicateFileRows &&
-                  preview.duplicateFileDetails?.previewRows?.length > 0 && (
-                    <div
-                      style={{
-                        maxHeight: 220,
-                        overflowY: "auto",
-                        marginTop: 10,
-                        border: "1px solid var(--gray-200)",
-                        borderRadius: "var(--radius-sm)",
-                      }}
-                    >
-                      {preview.duplicateFileDetails.previewRows.map((r, idx) => (
-                        <div
-                          key={`${r.rowNumber}-${idx}`}
-                          style={{
-                            padding: "8px 12px",
-                            borderBottom: "1px solid var(--gray-100)",
-                            fontSize: 13,
-                          }}
-                        >
-                          Row {r.rowNumber}: {r.productName || "N/A"} /{" "}
-                          {r.batchNumber || "N/A"} / {r.expiryDate || "N/A"} / Qty{" "}
-                          {r.quantity ?? "N/A"}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-              </div>
-            )}
-
-            <div className="import-summary" style={{ marginBottom: 16 }}>
+            <div className="import-summary">
               <div className="summary-item added">
                 <div className="s-num">{preview.summary?.new || 0}</div>
                 <div className="s-label">New</div>
@@ -478,7 +531,7 @@ export default function ImportPage() {
                 <div className="s-num">{preview.summary?.update || 0}</div>
                 <div className="s-label">Update</div>
               </div>
-              <div className="summary-item failed">
+              <div className="summary-item duplicate">
                 <div className="s-num">{preview.summary?.duplicate || 0}</div>
                 <div className="s-label">Duplicate</div>
               </div>
@@ -490,91 +543,92 @@ export default function ImportPage() {
 
             {(() => {
               const rowsByType = getRowsByType();
-              const duplicateRows = rowsByType.duplicate || [];
               const sections = [
-                { key: "new", title: "New Medicines", rows: rowsByType.new },
+                {
+                  key: "new",
+                  title: "New Items",
+                  rows: rowsByType.new,
+                  color: "var(--secondary)",
+                },
                 {
                   key: "update",
-                  title: "Updated Medicines",
+                  title: "Updates",
                   rows: rowsByType.update,
+                  color: "var(--info)",
                 },
-                { key: "duplicate", title: "Duplicates", rows: rowsByType.duplicate },
-                { key: "invalid", title: "Failed / Invalid", rows: rowsByType.invalid },
+                {
+                  key: "duplicate",
+                  title: "Duplicates (Requires Action)",
+                  rows: rowsByType.duplicate,
+                  color: "var(--warning)",
+                },
+                {
+                  key: "invalid",
+                  title: "Invalid / Errors",
+                  rows: rowsByType.invalid,
+                  color: "var(--danger)",
+                },
               ];
 
               return (
-                <div style={{ marginBottom: 16 }}>
-                  {duplicateRows.length > 0 && (
-                    <div
-                      style={{
-                        marginBottom: 10,
-                        fontSize: 12,
-                        color: "var(--gray-600)",
-                        border: "1px solid var(--gray-200)",
-                        borderRadius: "var(--radius-sm)",
-                        padding: "8px 10px",
-                      }}
-                    >
-                      Select duplicate rows you want to force import. Unselected
-                      duplicates will be skipped.
-                    </div>
-                  )}
+                <div style={{ display: "grid", gap: 20 }}>
                   {sections.map((section) => (
-                    <div key={section.key} style={{ marginBottom: 12 }}>
-                      <h3
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 700,
-                          marginBottom: 8,
-                          color: "var(--gray-700)",
-                        }}
-                      >
-                        {section.title} ({section.rows?.length || 0})
-                      </h3>
+                    <div key={section.key} className="preview-section">
+                      <div className="preview-header">
+                        <h3>
+                          {section.title}{" "}
+                          <span
+                            style={{
+                              color: "var(--gray-400)",
+                              fontWeight: 400,
+                            }}
+                          >
+                            ({section.rows?.length || 0})
+                          </span>
+                        </h3>
+                      </div>
+
                       {!section.rows?.length ? (
                         <div
                           style={{
-                            padding: "8px 10px",
-                            border: "1px solid var(--gray-100)",
-                            borderRadius: "var(--radius-sm)",
-                            fontSize: 12,
-                            color: "var(--gray-500)",
+                            padding: "12px",
+                            background: "var(--gray-50)",
+                            borderRadius: 8,
+                            fontSize: 13,
+                            color: "var(--gray-400)",
                           }}
                         >
-                          None
+                          No items in this category
                         </div>
                       ) : (
-                        <div
-                          style={{
-                            maxHeight: 170,
-                            overflowY: "auto",
-                            border: "1px solid var(--gray-200)",
-                            borderRadius: "var(--radius-sm)",
-                          }}
-                        >
+                        <div className="preview-list">
                           {section.rows.map((r, idx) => (
                             <div
-                              key={`${section.key}-${r.rowNumber}-${idx}`}
-                              style={{
-                                padding: "8px 12px",
-                                borderBottom: "1px solid var(--gray-100)",
-                                fontSize: 13,
-                              }}
+                              key={`${section.key}-${idx}`}
+                              className="preview-row"
                             >
-                              <strong>Row {r.rowNumber}</strong>:{" "}
-                              {r.productName || "N/A"} / {r.batchNumber || "N/A"} /{" "}
-                              {r.expiryDate || "N/A"} / Qty {r.quantity ?? "N/A"}
-                              {section.key === "duplicate" ? (
-                                <>
+                              <div className="preview-row-main">
+                                Row {r.rowNumber}: {r.productName || "N/A"}
+                              </div>
+                              <div className="preview-row-meta">
+                                <span className="meta-item">
+                                  <AppIcon icon={faBox} size="xs" /> Qty:{" "}
+                                  {r.quantity ?? 0}
+                                </span>
+                                <span className="meta-item">
+                                  <AppIcon icon={faTag} size="xs" /> Batch:{" "}
+                                  {r.batchNumber || "N/A"}
+                                </span>
+                                <span className="meta-item">
+                                  <AppIcon icon={faCalendarDay} size="xs" />{" "}
+                                  Exp: {r.expiryDate || "N/A"}
+                                </span>
+                              </div>
+                              {section.key === "duplicate" && (
+                                <div style={{ marginTop: 8 }}>
                                   <label
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: 6,
-                                      marginTop: 3,
-                                      fontSize: 12,
-                                      color: "var(--gray-600)",
-                                    }}
+                                    className="checkbox-label"
+                                    style={{ fontSize: 12 }}
                                   >
                                     <input
                                       type="checkbox"
@@ -589,19 +643,20 @@ export default function ImportPage() {
                                     />
                                     Force import this duplicate
                                   </label>
-                                  <div
-                                    style={{ marginTop: 3, color: "var(--gray-500)" }}
-                                    title={`Compared fields:\nproduct_name(normalized): ${String(r.productName || "").trim().toLowerCase()}\nbatch_no(trim): ${String(r.batchNumber || "").trim()}\nexpiry_date: ${r.expiryDate || "N/A"}\nquantity: ${r.quantity ?? "N/A"}\nbuying_price: ${r.buyingPrice ?? "N/A"}\n\nRule: ${r.duplicateRule || "normalized(product_name)+batch+expiry+qty+buying_price"}`}
-                                  >
-                                    Why marked duplicate? (hover)
-                                  </div>
-                                </>
-                              ) : null}
-                              {r.reason ? (
-                                <div style={{ marginTop: 3, color: "var(--gray-500)" }}>
+                                </div>
+                              )}
+                              {r.reason && (
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    color: section.color,
+                                    marginTop: 2,
+                                    fontWeight: 500,
+                                  }}
+                                >
                                   {r.reason}
                                 </div>
-                              ) : null}
+                              )}
                             </div>
                           ))}
                         </div>
@@ -612,36 +667,47 @@ export default function ImportPage() {
               );
             })()}
 
-            <label
+            <div
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 14,
-                fontSize: 13,
+                marginTop: 24,
+                padding: 16,
+                background: "var(--gray-50)",
+                borderRadius: 8,
               }}
             >
-              <input
-                type="checkbox"
-                checked={forceImport}
-                onChange={(e) => setForceImport(e.target.checked)}
-              />
-              Force import (process duplicate rows/file as well)
-            </label>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={forceImport}
+                  onChange={(e) => setForceImport(e.target.checked)}
+                />
+                <strong>Global Force Import</strong>
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: "var(--gray-500)",
+                    fontWeight: 400,
+                  }}
+                >
+                  (Process all duplicate rows/file)
+                </span>
+              </label>
+            </div>
 
-            <div style={{ display: "flex", gap: 10 }}>
+            <div className="action-bar">
               <button
                 className="btn btn-primary"
                 onClick={handleConfirmImport}
                 disabled={committing}
+                style={{ flex: 1 }}
               >
                 {committing ? (
                   <>
-                    <span className="spinner spinner-sm" /> Importing...
+                    <span className="spinner spinner-sm" /> Importing Data...
                   </>
                 ) : (
                   <>
-                    <AppIcon icon={faCircleCheck} /> Confirm Import
+                    <AppIcon icon={faCircleCheck} /> Confirm & Commit Import
                   </>
                 )}
               </button>
@@ -668,15 +734,23 @@ export default function ImportPage() {
                 icon={result.success ? faCircleCheck : faFileCircleXmark}
                 className="header-inline-icon"
               />
-              {result.success ? "Import Complete" : "Import Failed"}
+              3. Import Result
             </h2>
           </div>
           <div className="card-body">
             <div
-              className={`alert ${result.success ? "alert-success" : "alert-error"}`}
-              style={{ marginBottom: 16 }}
+              className={`status-indicator ${result.success ? "success" : "error"}`}
             >
-              {result.message}
+              <AppIcon
+                icon={result.success ? faCircleCheck : faTriangleExclamation}
+                size="lg"
+              />
+              <div>
+                <div style={{ fontWeight: 700 }}>
+                  {result.success ? "Import Successful" : "Import Failed"}
+                </div>
+                <div style={{ fontSize: 14 }}>{result.message}</div>
+              </div>
             </div>
 
             {result.summary && (
@@ -689,7 +763,7 @@ export default function ImportPage() {
                   <div className="s-num">{result.summary.updated || 0}</div>
                   <div className="s-label">Updated</div>
                 </div>
-                <div className="summary-item failed">
+                <div className="summary-item duplicate">
                   <div className="s-num">{result.summary.duplicate || 0}</div>
                   <div className="s-label">Duplicate</div>
                 </div>
@@ -701,39 +775,34 @@ export default function ImportPage() {
             )}
 
             {result.failedRows?.length > 0 && (
-              <div style={{ marginTop: 20 }}>
+              <div style={{ marginTop: 24 }}>
                 <h3
                   style={{
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: 700,
                     color: "var(--danger)",
-                    marginBottom: 10,
+                    marginBottom: 12,
                   }}
                 >
-                  <AppIcon icon={faTriangleExclamation} tone="danger" /> Failed
-                  Rows
+                  <AppIcon icon={faTriangleExclamation} /> Failed Rows Detail
                 </h3>
-                <div
-                  style={{
-                    maxHeight: 280,
-                    overflowY: "auto",
-                    border: "1px solid var(--gray-200)",
-                    borderRadius: "var(--radius-sm)",
-                  }}
-                >
+                <div className="preview-list">
                   {result.failedRows.map((row, i) => (
                     <div
                       key={i}
-                      style={{
-                        padding: "10px 14px",
-                        borderBottom: "1px solid var(--gray-100)",
-                        fontSize: 13,
-                      }}
+                      className="preview-row"
+                      style={{ borderLeft: "4px solid var(--danger)" }}
                     >
                       <strong style={{ color: "var(--danger)" }}>
-                        Row {row.row}:
+                        Row {row.row}
                       </strong>
-                      <ul style={{ margin: "4px 0 0 16px", color: "var(--gray-700)" }}>
+                      <ul
+                        style={{
+                          margin: "4px 0 0 16px",
+                          color: "var(--gray-700)",
+                          fontSize: 13,
+                        }}
+                      >
                         {row.errors.map((e, j) => (
                           <li key={j}>{e}</li>
                         ))}
@@ -743,6 +812,12 @@ export default function ImportPage() {
                 </div>
               </div>
             )}
+
+            <div style={{ marginTop: 24 }}>
+              <button className="btn btn-primary" onClick={clearSelection}>
+                Start New Import
+              </button>
+            </div>
           </div>
         </div>
       )}
