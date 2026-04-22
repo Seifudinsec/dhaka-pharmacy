@@ -27,9 +27,30 @@ connectDB();
 // Security middleware
 app.use(helmet());
 
-const allowedOrigins = process.env.FRONTEND_URL
-  ? process.env.FRONTEND_URL.split(",").map((uri) => uri.trim())
-  : ["http://localhost:3000"];
+const normalizeOrigin = (origin = "") => origin.trim().replace(/\/+$/, "");
+
+const envOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(",").map((uri) => normalizeOrigin(uri))
+  : [];
+
+const defaultOrigins = [
+  "http://localhost:3000",
+  "https://dhaka-pharmacy.vercel.app",
+];
+
+const allowedOrigins = [...new Set([...envOrigins, ...defaultOrigins])].filter(
+  Boolean,
+);
+
+const isAllowedOrigin = (origin) => {
+  const normalized = normalizeOrigin(origin);
+  if (allowedOrigins.includes("*")) return true;
+  if (allowedOrigins.includes(normalized)) return true;
+  // Allow Vercel preview URLs for this project
+  if (/^https:\/\/dhaka-pharmacy(-[a-z0-9-]+)?\.vercel\.app$/i.test(normalized))
+    return true;
+  return false;
+};
 
 // Initialize Socket.io
 socketConfig.init(server, allowedOrigins);
@@ -39,10 +60,7 @@ app.use(
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps or curl)
       if (!origin) return callback(null, true);
-      if (
-        allowedOrigins.indexOf(origin) !== -1 ||
-        allowedOrigins.includes("*")
-      ) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
