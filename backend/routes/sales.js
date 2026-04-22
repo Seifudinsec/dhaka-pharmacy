@@ -10,6 +10,12 @@ const { getIO } = require("../config/socket");
 
 router.use(protect);
 
+const normalizeName = (value = "") =>
+  String(value).trim().toLowerCase().replace(/\s+/g, " ");
+
+const escapeRegex = (value = "") =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // GET /api/sales — sales history with optional date range
 router.get("/", async (req, res) => {
   try {
@@ -103,74 +109,110 @@ router.post("/", async (req, res) => {
           continue;
         }
 
-        const medicine = await Medicine.findById(medicineId).session(session);
-        if (!medicine) {
+        const selectedMedicine = await Medicine.findById(medicineId).session(
+          session,
+        );
+        if (!selectedMedicine) {
           warnings.push(`Medicine not found: ${medicineId}`);
           continue;
         }
 
-        if (medicine.status === "inactive") {
-          warnings.push(`"${medicine.name}" is inactive.`);
+        if (selectedMedicine.status === "inactive") {
+          warnings.push(`"${selectedMedicine.name}" is inactive.`);
           continue;
         }
 
-        if (new Date() > new Date(medicine.expiryDate)) {
-          warnings.push(`"${medicine.name}" is expired.`);
-          continue;
-        }
+        const now = new Date();
+        const productKey =
+          selectedMedicine.productKey || normalizeName(selectedMedicine.name);
+        const candidateBatches = await Medicine.find({
+          status: "active",
+          stock: { $gt: 0 },
+          expiryDate: { $gt: now },
+          $or: [
+            { productKey },
+            { normalizedName: productKey },
+            {
+              name: {
+                $regex: `^${escapeRegex(selectedMedicine.name)}$`,
+                $options: "i",
+              },
+            },
+          ],
+        })
+          .sort({ expiryDate: 1, createdAt: 1 })
+          .session(session);
 
-        if (medicine.stock < finalQty) {
-          warnings.push(`Insufficient stock for "${medicine.name}".`);
-          continue;
-        }
-
-        const stockUpdate = await Medicine.updateOne(
-          { _id: medicine._id, stock: { $gte: finalQty } },
-          { $inc: { stock: -finalQty } },
-          { session },
+        const totalAvailable = candidateBatches.reduce(
+          (sum, batch) => sum + Number(batch.stock || 0),
+          0,
         );
-
-        if (!stockUpdate.modifiedCount) {
-          warnings.push(`Failed to update stock for "${medicine.name}".`);
+        if (totalAvailable < finalQty) {
+          warnings.push(`Insufficient stock for "${selectedMedicine.name}".`);
           continue;
         }
 
-        const newStock = medicine.stock - finalQty;
-        if (newStock === 0) {
-          stockAlerts.push({
-            id: medicine._id.toString(),
-            name: medicine.name,
-            stock: 0,
-            alertType: "out_of_stock",
+        let remaining = finalQty;
+        for (const batch of candidateBatches) {
+          if (remaining <= 0) break;
+          const allocQty = Math.min(remaining, Number(batch.stock || 0));
+          if (allocQty <= 0) continue;
+
+          const stockUpdate = await Medicine.updateOne(
+            { _id: batch._id, stock: { $gte: allocQty } },
+            { $inc: { stock: -allocQty } },
+            { session },
+          );
+          if (!stockUpdate.modifiedCount) {
+            warnings.push(`Failed to update stock for "${batch.name}".`);
+            continue;
+          }
+
+          const newStock = Number(batch.stock || 0) - allocQty;
+          if (newStock === 0) {
+            stockAlerts.push({
+              id: batch._id.toString(),
+              name: batch.name,
+              stock: 0,
+              alertType: "out_of_stock",
+            });
+          } else if (newStock < 10) {
+            stockAlerts.push({
+              id: batch._id.toString(),
+              name: batch.name,
+              stock: newStock,
+              alertType: "low_stock",
+            });
+          }
+
+          const unitPrice = Number(batch.price);
+          const buyingPrice = Number(batch.buyingPrice || batch.price);
+          const subtotal = Number((unitPrice * allocQty).toFixed(2));
+          const itemProfit = Number(
+            ((unitPrice - buyingPrice) * allocQty).toFixed(2),
+          );
+
+          saleItems.push({
+            medicine: batch._id,
+            medicineName: batch.name,
+            quantity: allocQty,
+            unitPrice,
+            buyingPrice,
+            subtotal,
+            profit: itemProfit,
           });
-        } else if (newStock < 10) {
-          stockAlerts.push({
-            id: medicine._id.toString(),
-            name: medicine.name,
-            stock: newStock,
-            alertType: "low_stock",
-          });
+
+          totalAmount += subtotal;
+          totalProfit += itemProfit;
+          remaining -= allocQty;
         }
 
-        const unitPrice = Number(medicine.price);
-        const buyingPrice = Number(medicine.buyingPrice || medicine.price);
-        const subtotal = Number((unitPrice * finalQty).toFixed(2));
-        const itemProfit = Number(
-          ((unitPrice - buyingPrice) * finalQty).toFixed(2),
-        );
-
-        saleItems.push({
-          medicine: medicine._id,
-          medicineName: medicine.name,
-          quantity: finalQty,
-          unitPrice,
-          buyingPrice,
-          subtotal,
-          profit: itemProfit,
-        });
-
-        totalAmount += subtotal;
-        totalProfit += itemProfit;
+        if (remaining > 0) {
+          throw {
+            code: "ALLOCATION_FAILED",
+            message: `Could not allocate stock safely for "${selectedMedicine.name}". Please retry.`,
+          };
+        }
       }
 
       if (!saleItems.length) {
@@ -225,6 +267,12 @@ router.post("/", async (req, res) => {
       warnings: warnings.length ? warnings : undefined,
     });
   } catch (error) {
+    if (error.code === "ALLOCATION_FAILED") {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+      });
+    }
     if (error.code === "NO_VALID_ITEMS") {
       return res.status(400).json({
         success: false,

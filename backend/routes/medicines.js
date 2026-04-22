@@ -13,6 +13,18 @@ const pharmacistOrAdminOnly = (req, res, next) => {
   next();
 };
 
+const normalizeText = (value = '') =>
+  String(value).trim().toLowerCase().replace(/\s+/g, ' ');
+
+const normalizeBatch = (value = '') =>
+  String(value).trim().toUpperCase().replace(/\s+/g, '');
+
+const toDateKey = (value) => {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+};
+
 // GET /api/medicines
 router.get('/', async (req, res) => {
   try {
@@ -62,7 +74,12 @@ router.get('/', async (req, res) => {
 router.get('/check/:name', async (req, res) => {
   try {
     const name = String(req.params.name).trim();
-    const medicine = await Medicine.findOne({ name: { $regex: `^${name}$`, $options: 'i' } });
+    const medicine = await Medicine.findOne({
+      $or: [
+        { normalizedName: normalizeText(name) },
+        { name: { $regex: `^${name}$`, $options: 'i' } },
+      ],
+    });
     res.json({ success: true, exists: !!medicine });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Check error' });
@@ -110,19 +127,31 @@ router.post('/', pharmacistOrAdminOnly, async (req, res) => {
       return res.status(400).json({ success: false, message: 'A valid expiry date is required.' });
     }
 
-    // Duplicate check
-    const existing = await Medicine.findOne({ name: { $regex: `^${String(name).trim()}$`, $options: 'i' } });
+    const normalizedName = normalizeText(name);
+    const normalizedBatch = normalizeBatch(batchNumber);
+    const expiryDateKey = toDateKey(expiryDate);
+
+    // Duplicate check (same product + batch + expiry)
+    const existing = await Medicine.findOne({
+      productKey: normalizedName,
+      batchNumberNormalized: normalizedBatch,
+      expiryDateKey,
+    });
     if (existing) {
-      return res.status(409).json({ success: false, message: `Medicine "${name.trim()}" already exists.` });
+      return res.status(409).json({ success: false, message: `Medicine batch "${name.trim()} / ${String(batchNumber).trim()}" already exists for that expiry date.` });
     }
 
     const medicine = await Medicine.create({
       name: String(name).trim(),
+      normalizedName,
+      productKey: normalizedName,
       price: Number(price),
       buyingPrice: Number(buyingPrice),
       batchNumber: String(batchNumber).trim(),
+      batchNumberNormalized: normalizedBatch,
       stock: Math.floor(Number(stock)),
       expiryDate: new Date(expiryDate),
+      expiryDateKey,
       status: 'active',
     });
 
@@ -160,24 +189,42 @@ router.put('/:id', pharmacistOrAdminOnly, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid expiry date.' });
     }
 
-    // Check for name duplicate (excluding self)
-    if (name) {
-      const duplicate = await Medicine.findOne({
-        name: { $regex: `^${String(name).trim()}$`, $options: 'i' },
-        _id: { $ne: req.params.id },
+    const existingMedicine = await Medicine.findById(req.params.id);
+    if (!existingMedicine) {
+      return res.status(404).json({ success: false, message: 'Medicine not found.' });
+    }
+
+    const nextName = name !== undefined ? String(name).trim() : existingMedicine.name;
+    const nextBatch = batchNumber !== undefined ? String(batchNumber).trim() : existingMedicine.batchNumber;
+    const nextExpiryDate = expiryDate !== undefined ? new Date(expiryDate) : existingMedicine.expiryDate;
+    const nextNormalizedName = normalizeText(nextName);
+    const nextBatchNormalized = normalizeBatch(nextBatch);
+    const nextExpiryDateKey = toDateKey(nextExpiryDate);
+
+    const duplicate = await Medicine.findOne({
+      _id: { $ne: req.params.id },
+      productKey: nextNormalizedName,
+      batchNumberNormalized: nextBatchNormalized,
+      expiryDateKey: nextExpiryDateKey,
+    });
+    if (duplicate) {
+      return res.status(409).json({
+        success: false,
+        message: `Medicine batch "${nextName} / ${nextBatch}" already exists for that expiry date.`,
       });
-      if (duplicate) {
-        return res.status(409).json({ success: false, message: `Medicine "${name.trim()}" already exists.` });
-      }
     }
 
     const updates = {};
     if (name !== undefined) updates.name = String(name).trim();
+    updates.normalizedName = nextNormalizedName;
+    updates.productKey = nextNormalizedName;
     if (price !== undefined) updates.price = Number(price);
     if (buyingPrice !== undefined) updates.buyingPrice = Number(buyingPrice);
     if (batchNumber !== undefined) updates.batchNumber = String(batchNumber).trim();
+    updates.batchNumberNormalized = nextBatchNormalized;
     if (stock !== undefined) updates.stock = Math.floor(Number(stock));
     if (expiryDate !== undefined) updates.expiryDate = new Date(expiryDate);
+    updates.expiryDateKey = nextExpiryDateKey;
 
     const medicine = await Medicine.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
     if (!medicine) {

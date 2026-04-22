@@ -1,16 +1,20 @@
+const crypto = require("crypto");
 const express = require("express");
-const router = express.Router();
+const mongoose = require("mongoose");
 const multer = require("multer");
 const XLSX = require("xlsx");
 const Medicine = require("../models/Medicine");
+const ImportHistory = require("../models/ImportHistory");
+const ImportRow = require("../models/ImportRow");
+const AuditLog = require("../models/AuditLog");
 const { protect } = require("../middleware/auth");
 
+const router = express.Router();
 router.use(protect);
 
-// Multer — memory storage, only xlsx/xls
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = [
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -21,9 +25,9 @@ const upload = multer({
 
     if (allowed.includes(file.mimetype) || allowedExts.includes(ext)) {
       cb(null, true);
-    } else {
-      cb(new Error("Only Excel files (.xlsx, .xls) are allowed."), false);
+      return;
     }
+    cb(new Error("Only Excel files (.xlsx, .xls) are allowed."), false);
   },
 });
 
@@ -33,6 +37,28 @@ const normalizeKey = (val = "") =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
+
+const normalizeName = (val = "") =>
+  String(val).trim().toLowerCase().replace(/\s+/g, " ");
+
+const normalizeBatch = (val = "") =>
+  String(val).trim().toUpperCase().replace(/\s+/g, "");
+
+const makeDateKey = (value) => {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+};
+
+const fileHashFromBuffer = (buffer) =>
+  crypto.createHash("sha256").update(buffer).digest("hex");
+
+const hashRowKey = (input) =>
+  crypto.createHash("sha256").update(input).digest("hex");
+
+const escapeRegex = (value = "") =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const MONTHS = {
   jan: 0,
@@ -49,36 +75,6 @@ const MONTHS = {
   dec: 11,
 };
 
-const parseExcelDate = (val) => {
-  if (!val) return null;
-  if (val instanceof Date) return val;
-  if (typeof val === "number") {
-    const d = XLSX.SSF.parse_date_code(val);
-    return d ? new Date(d.y, d.m - 1, d.d) : null;
-  }
-
-  const s = String(val).trim();
-  const parts = s.split(/[\/\-]/);
-
-  if (parts.length === 3) {
-    const [d, m, y] = parts;
-    const month = MONTHS[m.toLowerCase()] ?? Number(m) - 1;
-    const year = y.length === 2 ? 2000 + Number(y) : Number(y);
-    const date = new Date(year, month, Number(d) || 1);
-    if (!isNaN(date)) return date;
-  }
-
-  const parsed = new Date(s.replace(/\//g, "-"));
-  return isNaN(parsed) ? null : parsed;
-};
-
-const getFirstValue = (row, keys) => {
-  const found = keys.find(
-    (k) => row[k] !== undefined && String(row[k]).trim() !== "",
-  );
-  return found ? row[found] : "";
-};
-
 const HEADER_MAP = {
   name: [
     "product_name",
@@ -88,6 +84,7 @@ const HEADER_MAP = {
     "medicine",
     "name",
     "description",
+    "productname",
   ],
   stock: ["quantity", "stock", "qty", "count", "amount", "balance"],
   batch: ["batch_number", "batch", "lot", "batch_no", "lot_no"],
@@ -102,219 +99,670 @@ const HEADER_MAP = {
   sellingPrice: [
     "selling_price_kes",
     "selling_price",
+    "selling price kes",
     "price",
     "selling",
     "rate",
   ],
 };
 
-const validateRow = (row, index, mapping) => {
+const getFirstValue = (row, keys) => {
+  const found = keys.find(
+    (k) => row[k] !== undefined && String(row[k]).trim() !== "",
+  );
+  return found ? row[found] : "";
+};
+
+const parseExcelDate = (val) => {
+  if (!val) return null;
+  if (val instanceof Date) return val;
+  if (typeof val === "number") {
+    const parsed = XLSX.SSF.parse_date_code(val);
+    return parsed ? new Date(parsed.y, parsed.m - 1, parsed.d) : null;
+  }
+
+  const s = String(val).trim();
+  const parts = s.split(/[\/\-]/);
+  if (parts.length === 3) {
+    const [d, m, y] = parts;
+    const month = MONTHS[m.toLowerCase()] ?? Number(m) - 1;
+    const year = y.length === 2 ? 2000 + Number(y) : Number(y);
+    const date = new Date(year, month, Number(d) || 1);
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+
+  const parsed = new Date(s.replace(/\//g, "-"));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const parseWorkbookRows = (fileBuffer) => {
+  const workbook = XLSX.read(fileBuffer, { type: "buffer", cellDates: true });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) {
+    return { error: "Excel file has no sheets." };
+  }
+
+  const sheet = workbook.Sheets[sheetName];
+  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+  if (!matrix.length) {
+    return { error: "Excel file is empty." };
+  }
+
+  let headerRowIndex = -1;
+  let headerMapping = {};
+
+  for (let i = 0; i < Math.min(matrix.length, 20); i++) {
+    const normalizedCells = matrix[i].map((c) => normalizeKey(c));
+    const mapping = {};
+
+    for (const [canonical, aliases] of Object.entries(HEADER_MAP)) {
+      const foundIdx = normalizedCells.findIndex((c) => aliases.includes(c));
+      if (foundIdx !== -1) {
+        mapping[canonical] = matrix[i][foundIdx];
+      }
+    }
+
+    if (mapping.name || mapping.stock) {
+      headerRowIndex = i;
+      headerMapping = mapping;
+      break;
+    }
+  }
+
+  if (headerRowIndex === -1) {
+    return {
+      error:
+        "Required columns (Name, Quantity) not found. Please use the template.",
+    };
+  }
+
+  const rows = matrix
+    .slice(headerRowIndex + 1)
+    .filter((cells) => cells.some((cell) => String(cell).trim() !== ""))
+    .map((cells, idx) => {
+      const rowObj = {};
+      matrix[headerRowIndex].forEach((h, colIdx) => {
+        rowObj[h] = cells[colIdx];
+      });
+      return {
+        rowNumber: headerRowIndex + idx + 2,
+        row: rowObj,
+      };
+    });
+
+  if (!rows.length) {
+    return { error: "No data rows found." };
+  }
+
+  return { rows, headerMapping };
+};
+
+const validateAndNormalizeRow = (rawRow, mapping) => {
   const errors = [];
-  const rowNum = index + 2;
+  const productNameRaw = String(
+    getFirstValue(rawRow.row, [mapping.name, "name"]),
+  ).trim();
+  const productName = productNameRaw.replace(/\s+/g, " ").trim();
+  const normalizedProductName = normalizeName(productName);
 
-  const name = String(getFirstValue(row, [mapping.name, "name"])).trim();
-  const batchNumber =
-    String(getFirstValue(row, [mapping.batch, "batch"])).trim() || "UNTITLED";
-  const bPrice = Number(
-    getFirstValue(row, [mapping.buyingPrice, "buyingPrice"]),
-  );
-  const sPrice = Number(
-    getFirstValue(row, [mapping.sellingPrice, "sellingPrice"]),
-  );
-  const stock = Math.floor(
-    Number(getFirstValue(row, [mapping.stock, "stock"])),
-  );
-  const expiry = parseExcelDate(getFirstValue(row, [mapping.expiry, "expiry"]));
+  const batchRaw = String(
+    getFirstValue(rawRow.row, [mapping.batch, "batch"]),
+  ).trim();
+  const batchNumber = batchRaw || "UNTITLED";
+  const batchNumberNormalized = normalizeBatch(batchNumber);
 
-  if (!name) errors.push(`Row ${rowNum}: Name missing`);
-  if (isNaN(bPrice) || bPrice < 0)
-    errors.push(`Row ${rowNum}: Invalid buying price`);
-  const price =
-    isNaN(sPrice) || sPrice <= 0 ? Number((bPrice * 1.4).toFixed(2)) : sPrice;
-  if (isNaN(price) || price <= 0)
-    errors.push(`Row ${rowNum}: Invalid selling price`);
-  if (isNaN(stock) || stock < 0) errors.push(`Row ${rowNum}: Invalid quantity`);
-  if (!expiry) errors.push(`Row ${rowNum}: Invalid expiry date`);
+  const quantity = Math.floor(
+    Number(getFirstValue(rawRow.row, [mapping.stock, "stock"])),
+  );
+  const buyingPrice = Number(
+    getFirstValue(rawRow.row, [mapping.buyingPrice, "buyingPrice"]),
+  );
+  const providedSellingPrice = Number(
+    getFirstValue(rawRow.row, [mapping.sellingPrice, "sellingPrice"]),
+  );
+  const expiryDate = parseExcelDate(
+    getFirstValue(rawRow.row, [mapping.expiry, "expiry"]),
+  );
+  const expiryDateKey = makeDateKey(expiryDate);
+
+  if (!productName) errors.push("Product name is missing");
+  if (Number.isNaN(quantity) || quantity < 0)
+    errors.push("Invalid quantity (must be 0 or more)");
+  if (Number.isNaN(buyingPrice) || buyingPrice < 0)
+    errors.push("Invalid buying price");
+  if (!expiryDate || !expiryDateKey) errors.push("Invalid expiry date");
+
+  let sellingPrice = providedSellingPrice;
+  if (Number.isNaN(sellingPrice) || sellingPrice <= 0) {
+    sellingPrice = Number((buyingPrice * 1.4).toFixed(2));
+  }
+  if (Number.isNaN(sellingPrice) || sellingPrice <= 0) {
+    errors.push("Invalid selling price");
+  }
+
+  const rowKeyInput = [
+    normalizedProductName,
+    batchNumberNormalized,
+    expiryDateKey,
+    String(quantity),
+    Number.isNaN(buyingPrice) ? "" : buyingPrice.toFixed(4),
+  ].join("|");
 
   return {
-    valid: !errors.length,
+    rowNumber: rawRow.rowNumber,
+    valid: errors.length === 0,
     errors,
-    data: errors.length
-      ? null
-      : {
-          name,
-          price,
-          buyingPrice: bPrice,
-          batchNumber,
-          stock,
-          expiryDate: expiry,
-        },
+    data:
+      errors.length > 0
+        ? null
+        : {
+            productName,
+            normalizedProductName,
+            productKey: normalizedProductName,
+            quantity,
+            batchNumber,
+            batchNumberNormalized,
+            expiryDate,
+            expiryDateKey,
+            buyingPrice,
+            sellingPrice,
+            rowKey: hashRowKey(rowKeyInput),
+          },
   };
 };
 
-// POST /api/import
-router.post("/", upload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res
-        .status(400)
-        .json({ success: false, message: "No file uploaded." });
+const classifyRows = async (normalizedRows) => {
+  const validRows = normalizedRows.filter((r) => r.valid).map((r) => r.data);
+  const rowKeys = [...new Set(validRows.map((r) => r.rowKey))];
+  const productKeys = [...new Set(validRows.map((r) => r.productKey))];
+
+  const [existingProcessedRows, candidateMedicines] = await Promise.all([
+    rowKeys.length
+      ? ImportRow.find(
+          {
+            rowKey: { $in: rowKeys },
+            status: "processed",
+          },
+          { rowKey: 1 },
+        ).lean()
+      : [],
+    productKeys.length
+      ? Medicine.find(
+          {
+            $or: [
+              { productKey: { $in: productKeys } },
+              { normalizedName: { $in: productKeys } },
+            ],
+          },
+          {
+            _id: 1,
+            productKey: 1,
+            normalizedName: 1,
+            batchNumberNormalized: 1,
+            expiryDateKey: 1,
+            stock: 1,
+          },
+        ).lean()
+      : [],
+  ]);
+
+  const processedKeySet = new Set(existingProcessedRows.map((r) => r.rowKey));
+  const medicineMap = new Map();
+  for (const med of candidateMedicines) {
+    const medProductKey = med.productKey || med.normalizedName;
+    const key = `${medProductKey}|${med.batchNumberNormalized}|${med.expiryDateKey}`;
+    medicineMap.set(key, med);
+  }
+
+  const inFileSeen = new Set();
+  return normalizedRows.map((row) => {
+    if (!row.valid) {
+      return {
+        rowNumber: row.rowNumber,
+        classification: "INVALID",
+        reason: row.errors.join("; "),
+        data: null,
+      };
     }
 
-    const workbook = XLSX.read(req.file.buffer, {
-      type: "buffer",
-      cellDates: true,
-    });
-    const sheetName = workbook.SheetNames[0];
-    if (!sheetName)
-      return res
-        .status(400)
-        .json({ success: false, message: "Excel file has no sheets." });
+    const data = row.data;
+    if (inFileSeen.has(data.rowKey)) {
+      return {
+        rowNumber: row.rowNumber,
+        classification: "DUPLICATE",
+        reason: "Duplicate row inside this upload file",
+        data,
+      };
+    }
+    inFileSeen.add(data.rowKey);
 
-    const sheet = workbook.Sheets[sheetName];
-    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-    if (matrix.length === 0)
-      return res
-        .status(400)
-        .json({ success: false, message: "Excel file is empty." });
-
-    let headerRowIndex = -1;
-    let headerMapping = {};
-
-    for (let i = 0; i < Math.min(matrix.length, 20); i++) {
-      const normalizedCells = matrix[i].map((c) => normalizeKey(c));
-      const mapping = {};
-
-      for (const [canonical, aliases] of Object.entries(HEADER_MAP)) {
-        const foundIdx = normalizedCells.findIndex((c) => aliases.includes(c));
-        if (foundIdx !== -1) {
-          mapping[canonical] = matrix[i][foundIdx];
-        }
-      }
-
-      if (mapping.name || mapping.stock) {
-        headerRowIndex = i;
-        headerMapping = mapping;
-        break;
-      }
+    if (processedKeySet.has(data.rowKey)) {
+      return {
+        rowNumber: row.rowNumber,
+        classification: "DUPLICATE",
+        reason: "Row was already processed in a previous import",
+        data,
+      };
     }
 
-    if (headerRowIndex === -1) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Required columns (Name, Quantity) not found. Please use the template.",
-      });
-    }
-
-    const rows = matrix
-      .slice(headerRowIndex + 1)
-      .filter((cells) => cells.some((cell) => String(cell).trim() !== ""))
-      .map((cells) => {
-        const rowObj = {};
-        matrix[headerRowIndex].forEach((h, idx) => {
-          rowObj[h] = cells[idx];
-        });
-        return rowObj;
-      });
-
-    if (rows.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "No data rows found." });
-    }
-
-    const bulkOps = [];
-    const failedRows = [];
-    let addedCount = 0;
-    let updatedCount = 0;
-
-    const existingNames = new Set(
-      (await Medicine.find({}, "name")).map((m) => m.name.toLowerCase()),
-    );
-
-    // Group by name to avoid multiple operations on the same document in one bulkWrite
-    const processedData = new Map();
-
-    for (let i = 0; i < rows.length; i++) {
-      const { valid, errors, data } = validateRow(
-        rows[i],
-        headerRowIndex + i,
-        headerMapping,
-      );
-      if (!valid) {
-        failedRows.push({ row: headerRowIndex + i + 2, errors });
-        continue;
-      }
-
-      const lowerName = data.name.trim().toLowerCase();
-      // If same name appears twice in Excel, last one wins
-      processedData.set(lowerName, data);
-    }
-
-    for (const [lowerName, data] of processedData.entries()) {
-      if (existingNames.has(lowerName)) {
-        updatedCount++;
-      } else {
-        addedCount++;
-      }
-
-      bulkOps.push({
-        updateOne: {
-          filter: { name: data.name.trim() },
-          update: { $set: { ...data, status: "active" } },
-          upsert: true,
+    const matchKey = `${data.productKey}|${data.batchNumberNormalized}|${data.expiryDateKey}`;
+    const existing = medicineMap.get(matchKey);
+    if (existing) {
+      return {
+        rowNumber: row.rowNumber,
+        classification: "UPDATE",
+        reason: "Existing product batch will be stock-updated",
+        data: {
+          ...data,
+          existingMedicineId: existing._id,
+          existingStock: Number(existing.stock || 0),
         },
-      });
+      };
     }
 
-    if (bulkOps.length > 0) {
-      try {
-        await Medicine.bulkWrite(bulkOps, { ordered: false });
-      } catch (bulkError) {
-        console.error("Bulk write partial failure:", bulkError);
-        // If it's a bulkWrite error, it might still have succeeded for some.
-        // But for a 500 error we want to know why.
-        if (
-          bulkError.name === "BulkWriteError" ||
-          bulkError.name === "MongoBulkWriteError"
-        ) {
-          // Some might have failed, we can still return success with info if we wanted
-          // but let's see if this was the cause of 500.
-        } else {
-          throw bulkError; // Rethrow to be caught by catch block
-        }
-      }
+    return {
+      rowNumber: row.rowNumber,
+      classification: "NEW",
+      reason: "New product batch will be created",
+      data,
+    };
+  });
+};
+
+const summarizeClassifications = (classifiedRows) => {
+  const summary = { new: 0, update: 0, duplicate: 0, invalid: 0, total: 0 };
+  for (const row of classifiedRows) {
+    summary.total += 1;
+    if (row.classification === "NEW") summary.new += 1;
+    else if (row.classification === "UPDATE") summary.update += 1;
+    else if (row.classification === "DUPLICATE") summary.duplicate += 1;
+    else summary.invalid += 1;
+  }
+  return summary;
+};
+
+const buildDuplicateFileDetails = (historyDoc) => {
+  if (!historyDoc) return null;
+  return {
+    importId: historyDoc.importId,
+    fileName: historyDoc.fileName,
+    createdAt: historyDoc.createdAt,
+    summary: historyDoc.summary || {},
+    previewRows: historyDoc.previewSnapshot || [],
+  };
+};
+
+const runPreview = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: "No file uploaded." });
+  }
+
+  const parsed = parseWorkbookRows(req.file.buffer);
+  if (parsed.error) {
+    return res.status(400).json({ success: false, message: parsed.error });
+  }
+
+  const fileHash = fileHashFromBuffer(req.file.buffer);
+  const duplicateImport = await ImportHistory.findOne({
+    fileHash,
+    status: "completed",
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const normalizedRows = parsed.rows.map((row) =>
+    validateAndNormalizeRow(row, parsed.headerMapping),
+  );
+  const classifiedRows = await classifyRows(normalizedRows);
+  const summary = summarizeClassifications(classifiedRows);
+  const importId = crypto.randomUUID();
+
+  return res.json({
+    success: true,
+    message: "Import preview generated. Review and confirm before applying.",
+    importId,
+    fileHash,
+    fileName: req.file.originalname,
+    duplicateFile: !!duplicateImport,
+    duplicateFileDetails: buildDuplicateFileDetails(duplicateImport),
+    summary,
+    rows: classifiedRows.slice(0, 250).map((row) => ({
+      rowNumber: row.rowNumber,
+      classification: row.classification,
+      reason: row.reason,
+      productName: row.data?.productName || null,
+      batchNumber: row.data?.batchNumber || null,
+      expiryDate: row.data?.expiryDateKey || null,
+      quantity: row.data?.quantity ?? null,
+    })),
+  });
+};
+
+const insertImportRowsInBatches = async (rows, session) => {
+  const chunkSize = 500;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    if (chunk.length) {
+      await ImportRow.insertMany(chunk, { session, ordered: false });
     }
+  }
+};
 
-    console.log(
-      `Import successful: Added ${addedCount}, Updated ${updatedCount}, Failed ${failedRows.length}`,
-    );
+const upsertMedicineForImport = async (rowData, importId, session) => {
+  const filter = {
+    productKey: rowData.productKey,
+    batchNumberNormalized: rowData.batchNumberNormalized,
+    expiryDateKey: rowData.expiryDateKey,
+  };
 
-    res.json({
-      success: true,
-      message: "Bulk Import Complete.",
-      summary: {
-        added: addedCount,
-        updated: updatedCount,
-        failed: failedRows.length,
-        total: rows.length,
+  let existing = await Medicine.findOne(filter).session(session);
+  if (!existing) {
+    // Backward compatibility for legacy records without normalized fields
+    existing = await Medicine.findOne({
+      name: { $regex: `^${escapeRegex(rowData.productName)}$`, $options: "i" },
+      batchNumber: {
+        $regex: `^${escapeRegex(rowData.batchNumber)}$`,
+        $options: "i",
       },
-      failedRows: failedRows.length > 0 ? failedRows : undefined,
-    });
-  } catch (error) {
-    console.error("Bulk import critical error:", error);
-    res.status(500).json({
+      expiryDate: rowData.expiryDate,
+    }).session(session);
+  }
+
+  if (!existing) {
+    const created = await Medicine.create(
+      [
+        {
+          name: rowData.productName,
+          normalizedName: rowData.normalizedProductName,
+          productKey: rowData.productKey,
+          price: rowData.sellingPrice,
+          buyingPrice: rowData.buyingPrice,
+          batchNumber: rowData.batchNumber,
+          batchNumberNormalized: rowData.batchNumberNormalized,
+          stock: rowData.quantity,
+          expiryDate: rowData.expiryDate,
+          expiryDateKey: rowData.expiryDateKey,
+          status: "active",
+          lastImportId: importId,
+        },
+      ],
+      { session },
+    );
+    return { medicineId: created[0]._id, type: "NEW" };
+  }
+
+  const nextStock = Number(existing.stock || 0) === 0
+    ? rowData.quantity
+    : Number(existing.stock || 0) + rowData.quantity;
+
+  await Medicine.updateOne(
+    { _id: existing._id },
+    {
+      $set: {
+        name: rowData.productName,
+        normalizedName: rowData.normalizedProductName,
+        productKey: rowData.productKey,
+        price: rowData.sellingPrice,
+        buyingPrice: rowData.buyingPrice,
+        batchNumber: rowData.batchNumber,
+        batchNumberNormalized: rowData.batchNumberNormalized,
+        expiryDate: rowData.expiryDate,
+        expiryDateKey: rowData.expiryDateKey,
+        status: "active",
+        stock: nextStock,
+        lastImportId: importId,
+      },
+    },
+    { session },
+  );
+
+  return { medicineId: existing._id, type: "UPDATE" };
+};
+
+const runCommit = async (req, res, { legacy = false } = {}) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: "No file uploaded." });
+  }
+
+  const forceImport = String(req.body?.forceImport || "false") === "true";
+  const confirmed = legacy || String(req.body?.confirm || "false") === "true";
+  if (!confirmed) {
+    return res.status(400).json({
       success: false,
-      message:
-        "Server error during bulk import: " +
-        (error.message || "Unknown error"),
-      error: process.env.NODE_ENV === "development" ? error.stack : undefined,
+      message: "Import confirmation is required before applying changes.",
     });
   }
-});
 
-// Multer error handler
+  const parsed = parseWorkbookRows(req.file.buffer);
+  if (parsed.error) {
+    return res.status(400).json({ success: false, message: parsed.error });
+  }
+
+  const fileHash = fileHashFromBuffer(req.file.buffer);
+  const duplicateImport = await ImportHistory.findOne({
+    fileHash,
+    status: "completed",
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  if (duplicateImport && !forceImport) {
+    return res.status(409).json({
+      success: false,
+      code: "DUPLICATE_FILE",
+      message: "This file has already been imported.",
+      duplicateFileDetails: buildDuplicateFileDetails(duplicateImport),
+      options: ["cancel", "force_import", "view_duplicate_file"],
+    });
+  }
+
+  const normalizedRows = parsed.rows.map((row) =>
+    validateAndNormalizeRow(row, parsed.headerMapping),
+  );
+  const classifiedRows = await classifyRows(normalizedRows);
+  const previewSummary = summarizeClassifications(classifiedRows);
+  const importId = req.body?.importId || crypto.randomUUID();
+  const summary = {
+    added: 0,
+    updated: 0,
+    duplicate: 0,
+    invalid: 0,
+    processed: 0,
+    skipped: 0,
+  };
+
+  const session = await mongoose.startSession();
+  let importHistoryCreated = false;
+
+  try {
+    await session.withTransaction(async () => {
+      await ImportHistory.create(
+        [
+          {
+            importId,
+            fileHash,
+            fileName: req.file.originalname,
+            totalRows: previewSummary.total,
+            summary: {
+              added: 0,
+              updated: 0,
+              duplicate: 0,
+              invalid: 0,
+              processed: 0,
+              skipped: 0,
+            },
+            status: "processing",
+            forced: forceImport,
+            duplicateOfImportId: duplicateImport?.importId || null,
+            createdBy: req.user?._id,
+            previewSnapshot: classifiedRows.slice(0, 50).map((row) => ({
+              rowNumber: row.rowNumber,
+              classification: row.classification,
+              reason: row.reason,
+              productName: row.data?.productName || null,
+              batchNumber: row.data?.batchNumber || null,
+              expiryDate: row.data?.expiryDateKey || null,
+              quantity: row.data?.quantity ?? null,
+            })),
+          },
+        ],
+        { session },
+      );
+      importHistoryCreated = true;
+
+      const importRowsToInsert = [];
+      for (const row of classifiedRows) {
+        if (row.classification === "INVALID") {
+          summary.invalid += 1;
+          summary.skipped += 1;
+          importRowsToInsert.push({
+            importId,
+            rowNumber: row.rowNumber,
+            rowKey: `invalid:${importId}:${row.rowNumber}`,
+            productName: "INVALID",
+            batchNumber: "INVALID",
+            expiryDateKey: "1970-01-01",
+            quantity: 0,
+            buyingPrice: 0,
+            sellingPrice: 0,
+            status: "invalid",
+            reason: row.reason,
+            medicine: null,
+          });
+          continue;
+        }
+
+        if (row.classification === "DUPLICATE" && !forceImport) {
+          summary.duplicate += 1;
+          summary.skipped += 1;
+          importRowsToInsert.push({
+            importId,
+            rowNumber: row.rowNumber,
+            rowKey: row.data.rowKey,
+            productName: row.data.productName,
+            batchNumber: row.data.batchNumber,
+            expiryDateKey: row.data.expiryDateKey,
+            quantity: row.data.quantity,
+            buyingPrice: row.data.buyingPrice,
+            sellingPrice: row.data.sellingPrice,
+            status: "duplicate",
+            reason: row.reason,
+            medicine: row.data.existingMedicineId || null,
+          });
+          continue;
+        }
+
+        const upsertResult = await upsertMedicineForImport(row.data, importId, session);
+        summary.processed += 1;
+        if (upsertResult.type === "NEW") summary.added += 1;
+        else summary.updated += 1;
+
+        importRowsToInsert.push({
+          importId,
+          rowNumber: row.rowNumber,
+          rowKey: row.data.rowKey,
+          productName: row.data.productName,
+          batchNumber: row.data.batchNumber,
+          expiryDateKey: row.data.expiryDateKey,
+          quantity: row.data.quantity,
+          buyingPrice: row.data.buyingPrice,
+          sellingPrice: row.data.sellingPrice,
+          status: "processed",
+          reason: forceImport && row.classification === "DUPLICATE"
+            ? "Processed with force import"
+            : "",
+          medicine: upsertResult.medicineId,
+        });
+      }
+
+      await insertImportRowsInBatches(importRowsToInsert, session);
+
+      await ImportHistory.updateOne(
+        { importId },
+        {
+          $set: {
+            summary,
+            status: "completed",
+            completedAt: new Date(),
+          },
+        },
+        { session },
+      );
+
+      try {
+        await AuditLog.create(
+          [
+            {
+              user: req.user._id,
+              action: "MEDICINES_IMPORTED",
+              resourceType: "System",
+              description: `User ${req.user.username} imported medicines. Added ${summary.added}, updated ${summary.updated}, duplicates ${summary.duplicate}, invalid ${summary.invalid}.`,
+              ipAddress: req.ip || req.connection?.remoteAddress || "unknown",
+              userAgent: req.get("User-Agent"),
+              metadata: {
+                importId,
+                fileName: req.file.originalname,
+                fileHash,
+                forced: forceImport,
+                summary,
+              },
+            },
+          ],
+          { session },
+        );
+      } catch (auditError) {
+        // Audit failures should not fail import transaction
+      }
+    });
+  } catch (error) {
+    if (importHistoryCreated) {
+      await ImportHistory.updateOne(
+        { importId },
+        {
+          $set: {
+            status: "failed",
+            failureReason: error.message || "Unknown import failure",
+            summary,
+          },
+        },
+      );
+    }
+
+    console.error("[IMPORT] Commit failed:", error);
+    return res.status(500).json({
+      success: false,
+      message: `Server error during import: ${error.message || "Unknown error"}`,
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  return res.json({
+    success: true,
+    message: "Bulk import complete.",
+    importId,
+    summary: {
+      added: summary.added,
+      updated: summary.updated,
+      duplicate: summary.duplicate,
+      invalid: summary.invalid,
+      failed: summary.invalid,
+      processed: summary.processed,
+      total: previewSummary.total,
+    },
+  });
+};
+
+router.post("/preview", upload.single("file"), runPreview);
+router.post("/commit", upload.single("file"), (req, res) =>
+  runCommit(req, res, { legacy: false }),
+);
+
+// Legacy direct import endpoint kept for backward compatibility.
+router.post("/", upload.single("file"), (req, res) =>
+  runCommit(req, res, { legacy: true }),
+);
+
 router.use((err, req, res, next) => {
   if (err.code === "LIMIT_FILE_SIZE") {
     return res.status(400).json({
@@ -322,7 +770,7 @@ router.use((err, req, res, next) => {
       message: "File too large. Maximum size is 5MB.",
     });
   }
-  res
+  return res
     .status(400)
     .json({ success: false, message: err.message || "File upload error." });
 });
