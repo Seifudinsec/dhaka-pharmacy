@@ -587,6 +587,21 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
   }
 
   const forceImport = String(req.body?.forceImport || "false") === "true";
+  let selectedDuplicateRows = [];
+  try {
+    selectedDuplicateRows = req.body?.selectedDuplicateRows
+      ? JSON.parse(req.body.selectedDuplicateRows)
+      : [];
+  } catch (e) {
+    selectedDuplicateRows = [];
+  }
+  const selectedDuplicateRowSet = new Set(
+    Array.isArray(selectedDuplicateRows)
+      ? selectedDuplicateRows
+          .map((v) => Number(v))
+          .filter((v) => Number.isFinite(v))
+      : [],
+  );
   const confirmed = legacy || String(req.body?.confirm || "false") === "true";
   if (!confirmed) {
     return res.status(400).json({
@@ -720,6 +735,31 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
           medicine: row.data.existingMedicineId || null,
         });
         continue;
+      }
+
+      if (row.classification === "DUPLICATE" && forceImport) {
+        const isSelected =
+          selectedDuplicateRowSet.size === 0 ||
+          selectedDuplicateRowSet.has(Number(row.rowNumber));
+        if (!isSelected) {
+          summary.duplicate += 1;
+          summary.skipped += 1;
+          importRowsToInsert.push({
+            importId,
+            rowNumber: row.rowNumber,
+            rowKey: row.data.rowKey,
+            productName: row.data.productName,
+            batchNumber: row.data.batchNumber,
+            expiryDateKey: row.data.expiryDateKey,
+            quantity: row.data.quantity,
+            buyingPrice: row.data.buyingPrice,
+            sellingPrice: row.data.sellingPrice,
+            status: "duplicate",
+            reason: "Duplicate row not selected for force import",
+            medicine: row.data.existingMedicineId || null,
+          });
+          continue;
+        }
       }
 
       processableRows.push(row);

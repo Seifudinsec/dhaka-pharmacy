@@ -39,6 +39,7 @@ export default function ImportPage() {
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [forceImport, setForceImport] = useState(false);
+  const [selectedDuplicateRows, setSelectedDuplicateRows] = useState([]);
   const [showDuplicateFileRows, setShowDuplicateFileRows] = useState(false);
   const inputRef = useRef();
 
@@ -73,6 +74,7 @@ export default function ImportPage() {
     setResult(null);
     setPreview(null);
     setForceImport(false);
+    setSelectedDuplicateRows([]);
     setShowDuplicateFileRows(false);
   };
 
@@ -93,6 +95,7 @@ export default function ImportPage() {
     setResult(null);
     setPreview(null);
     setForceImport(false);
+    setSelectedDuplicateRows([]);
 
     try {
       const formData = new FormData();
@@ -101,6 +104,7 @@ export default function ImportPage() {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setPreview(data);
+      setSelectedDuplicateRows([]);
       toast.success("Preview ready. Confirm to apply import.");
       if (data.duplicateFile) {
         toast.error("This file has already been imported. Use force import to continue.");
@@ -122,6 +126,10 @@ export default function ImportPage() {
       formData.append("file", file);
       formData.append("confirm", "true");
       formData.append("forceImport", forceImport ? "true" : "false");
+      formData.append(
+        "selectedDuplicateRows",
+        JSON.stringify(selectedDuplicateRows),
+      );
       if (preview.importId) formData.append("importId", preview.importId);
 
       const { data } = await api.post("/import/commit", formData, {
@@ -131,6 +139,7 @@ export default function ImportPage() {
 
       setResult(data);
       setPreview(null);
+      setSelectedDuplicateRows([]);
       toast.success(data.message || "Import complete.");
       window.dispatchEvent(
         new CustomEvent("dataChanged", {
@@ -167,7 +176,16 @@ export default function ImportPage() {
     setResult(null);
     setPreview(null);
     setForceImport(false);
+    setSelectedDuplicateRows([]);
     setShowDuplicateFileRows(false);
+  };
+
+  const toggleDuplicateRowSelection = (rowNumber) => {
+    setSelectedDuplicateRows((prev) =>
+      prev.includes(rowNumber)
+        ? prev.filter((n) => n !== rowNumber)
+        : [...prev, rowNumber],
+    );
   };
 
   const downloadTemplate = () => {
@@ -472,6 +490,7 @@ export default function ImportPage() {
 
             {(() => {
               const rowsByType = getRowsByType();
+              const duplicateRows = rowsByType.duplicate || [];
               const sections = [
                 { key: "new", title: "New Medicines", rows: rowsByType.new },
                 {
@@ -485,6 +504,21 @@ export default function ImportPage() {
 
               return (
                 <div style={{ marginBottom: 16 }}>
+                  {duplicateRows.length > 0 && (
+                    <div
+                      style={{
+                        marginBottom: 10,
+                        fontSize: 12,
+                        color: "var(--gray-600)",
+                        border: "1px solid var(--gray-200)",
+                        borderRadius: "var(--radius-sm)",
+                        padding: "8px 10px",
+                      }}
+                    >
+                      Select duplicate rows you want to force import. Unselected
+                      duplicates will be skipped.
+                    </div>
+                  )}
                   {sections.map((section) => (
                     <div key={section.key} style={{ marginBottom: 12 }}>
                       <h3
@@ -531,12 +565,37 @@ export default function ImportPage() {
                               {r.productName || "N/A"} / {r.batchNumber || "N/A"} /{" "}
                               {r.expiryDate || "N/A"} / Qty {r.quantity ?? "N/A"}
                               {section.key === "duplicate" ? (
-                                <div
-                                  style={{ marginTop: 3, color: "var(--gray-500)" }}
-                                  title={`Compared fields:\nproduct_name(normalized): ${String(r.productName || "").trim().toLowerCase()}\nbatch_no(trim): ${String(r.batchNumber || "").trim()}\nexpiry_date: ${r.expiryDate || "N/A"}\nquantity: ${r.quantity ?? "N/A"}\nbuying_price: ${r.buyingPrice ?? "N/A"}\n\nRule: ${r.duplicateRule || "normalized(product_name)+batch+expiry+qty+buying_price"}`}
-                                >
-                                  Why marked duplicate? (hover)
-                                </div>
+                                <>
+                                  <label
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 6,
+                                      marginTop: 3,
+                                      fontSize: 12,
+                                      color: "var(--gray-600)",
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedDuplicateRows.includes(
+                                        Number(r.rowNumber),
+                                      )}
+                                      onChange={() =>
+                                        toggleDuplicateRowSelection(
+                                          Number(r.rowNumber),
+                                        )
+                                      }
+                                    />
+                                    Force import this duplicate
+                                  </label>
+                                  <div
+                                    style={{ marginTop: 3, color: "var(--gray-500)" }}
+                                    title={`Compared fields:\nproduct_name(normalized): ${String(r.productName || "").trim().toLowerCase()}\nbatch_no(trim): ${String(r.batchNumber || "").trim()}\nexpiry_date: ${r.expiryDate || "N/A"}\nquantity: ${r.quantity ?? "N/A"}\nbuying_price: ${r.buyingPrice ?? "N/A"}\n\nRule: ${r.duplicateRule || "normalized(product_name)+batch+expiry+qty+buying_price"}`}
+                                  >
+                                    Why marked duplicate? (hover)
+                                  </div>
+                                </>
                               ) : null}
                               {r.reason ? (
                                 <div style={{ marginTop: 3, color: "var(--gray-500)" }}>
