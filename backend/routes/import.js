@@ -209,6 +209,7 @@ const validateAndNormalizeRow = (rawRow, mapping) => {
     getFirstValue(rawRow.row, [mapping.batch, "batch"]),
   ).trim();
   const batchNumber = batchRaw || "UNTITLED";
+  const batchNumberForRowKey = batchNumber.trim();
   const batchNumberNormalized = normalizeBatch(batchNumber);
 
   const quantity = Math.floor(
@@ -240,9 +241,10 @@ const validateAndNormalizeRow = (rawRow, mapping) => {
     errors.push("Invalid selling price");
   }
 
+  // STRICT row idempotency key: normalized name + exact trimmed batch + expiry + quantity + buying price
   const rowKeyInput = [
     normalizedProductName,
-    batchNumberNormalized,
+    batchNumberForRowKey,
     expiryDateKey,
     String(quantity),
     Number.isNaN(buyingPrice) ? "" : buyingPrice.toFixed(4),
@@ -267,6 +269,7 @@ const validateAndNormalizeRow = (rawRow, mapping) => {
             buyingPrice,
             sellingPrice,
             rowKey: hashRowKey(rowKeyInput),
+            rowKeyInput,
           },
   };
 };
@@ -448,6 +451,22 @@ const runPreview = async (req, res) => {
   const normalizedRows = parsed.rows.map((row) =>
     validateAndNormalizeRow(row, parsed.headerMapping),
   );
+
+  // Temporary debug support for duplicate diagnosis
+  for (const row of normalizedRows) {
+    if (!row.valid || !row.data) continue;
+    console.log("[IMPORT_PREVIEW_ROW_DEBUG]", {
+      rowNumber: row.rowNumber,
+      product_name: row.data.productName,
+      batch_no: row.data.batchNumber,
+      expiry_date: row.data.expiryDateKey,
+      quantity: row.data.quantity,
+      buying_price: row.data.buyingPrice,
+      row_key_input: row.data.rowKeyInput,
+      row_key: row.data.rowKey,
+    });
+  }
+
   const classifiedRows = await classifyRows(normalizedRows);
   const summary = summarizeClassifications(classifiedRows);
   const importId = crypto.randomUUID();
