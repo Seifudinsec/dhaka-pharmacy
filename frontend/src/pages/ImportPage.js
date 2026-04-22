@@ -149,9 +149,12 @@ export default function ImportPage() {
             : prev,
         );
       }
-      toast.error(serverData?.message || "Import failed.");
+      toast.error(serverData?.message || err.message || "Import failed.");
       if (serverData?.details?.code) {
         console.error("Import commit error:", serverData.details);
+      }
+      if (!serverData) {
+        console.error("Import commit request failed without response:", err);
       }
     } finally {
       setCommitting(false);

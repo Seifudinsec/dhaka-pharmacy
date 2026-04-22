@@ -247,8 +247,8 @@ const validateAndNormalizeRow = (rawRow, mapping) => {
   if (!productName) errors.push("Product name is missing");
   if (Number.isNaN(quantity) || quantity < 0)
     errors.push("Invalid quantity (must be 0 or more)");
-  if (Number.isNaN(buyingPrice) || buyingPrice < 0)
-    errors.push("Invalid buying price");
+  if (Number.isNaN(buyingPrice) || buyingPrice <= 0)
+    errors.push("Invalid buying price (must be greater than 0)");
   if (!expiryDate || !expiryDateKey) errors.push("Invalid expiry date");
 
   let sellingPrice = providedSellingPrice;
@@ -884,7 +884,13 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
       );
     }
 
-    console.error("[IMPORT] Commit failed:", error);
+    console.error("[IMPORT] Commit failed:", {
+      message: error?.message,
+      code: error?.code,
+      name: error?.name,
+      importId,
+      fileName: req.file?.originalname,
+    });
     return res.status(500).json({
       success: false,
       message: `Server error during import: ${error.message || "Unknown error"}`,
