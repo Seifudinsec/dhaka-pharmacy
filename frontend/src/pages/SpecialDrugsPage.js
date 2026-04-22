@@ -115,6 +115,7 @@ export default function SpecialDrugsPage() {
                     <th>Amount</th>
                     <th>ID Number</th>
                     <th>Phone</th>
+                    <th>Prescription/Reason</th>
                     <th>Recorded By</th>
                     {currentUser?.role === "admin" && <th>Actions</th>}
                   </tr>
@@ -159,6 +160,11 @@ export default function SpecialDrugsPage() {
                         <div className="d-flex align-items-center gap-2">
                           <AppIcon icon={faPhone} size="xs" tone="muted" />
                           {r.buyerPhoneNumber}
+                        </div>
+                      </td>
+                      <td data-label="Prescription/Reason">
+                        <div className="text-sm italic text-muted">
+                          {r.prescription || "–"}
                         </div>
                       </td>
                       <td data-label="Recorded By">

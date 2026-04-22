@@ -27,6 +27,11 @@ const specialDrugSchema = new mongoose.Schema(
       required: [true, "Buyer phone number is required"],
       trim: true,
     },
+    prescription: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     sale: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Sale",

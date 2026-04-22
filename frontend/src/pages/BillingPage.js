@@ -31,6 +31,7 @@ export default function BillingPage() {
     buyerName: "",
     buyerIdNumber: "",
     buyerPhoneNumber: "",
+    prescription: "",
   });
   const [processing, setProcessing] = useState(false);
   const [lastReceipt, setLastReceipt] = useState(null);
@@ -154,6 +155,7 @@ export default function BillingPage() {
           buyerName: "",
           buyerIdNumber: "",
           buyerPhoneNumber: "",
+          prescription: "",
         });
         fetchMedicines();
         window.dispatchEvent(
@@ -388,6 +390,28 @@ export default function BillingPage() {
                           setSpecialDrugDetails({
                             ...specialDrugDetails,
                             buyerPhoneNumber: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div
+                    className="form-group mb-2"
+                    style={{ gridColumn: "span 2" }}
+                  >
+                    <label className="text-xs text-muted mb-1 d-block">
+                      Prescription / Reason (Optional)
+                    </label>
+                    <div className="input-with-icon-sm">
+                      <AppIcon icon={faStickyNote} className="input-icon-sm" />
+                      <input
+                        className="form-control form-control-sm"
+                        placeholder="Prescription details or reason if none..."
+                        value={specialDrugDetails.prescription}
+                        onChange={(e) =>
+                          setSpecialDrugDetails({
+                            ...specialDrugDetails,
+                            prescription: e.target.value,
                           })
                         }
                       />
