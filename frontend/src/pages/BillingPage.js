@@ -9,6 +9,10 @@ import {
   faXmark,
   faReceipt,
   faStickyNote,
+  faPrescriptionBottleMedical,
+  faUser,
+  faIdCard,
+  faPhone,
 } from "@fortawesome/free-solid-svg-icons";
 import api from "../utils/api";
 import AppIcon from "../components/common/AppIcon";
@@ -23,6 +27,12 @@ export default function BillingPage() {
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState([]);
   const [notes, setNotes] = useState("");
+  const [specialDrugDetails, setSpecialDrugDetails] = useState({
+    drugName: "",
+    buyerName: "",
+    buyerIdNumber: "",
+    buyerPhoneNumber: "",
+  });
   const [processing, setProcessing] = useState(false);
   const [lastReceipt, setLastReceipt] = useState(null);
   const [fetchLoading, setFetchLoading] = useState(false);
@@ -87,23 +97,40 @@ export default function BillingPage() {
         return prev;
       }
       return prev.map((i) => (i._id === id ? { ...i, qty: newQty } : i));
-    });
-  };
+    const handleSale = async () => {
+      if (!cart.length) return toast.error("Cart is empty.");
 
-  const handleSale = async () => {
-    if (!cart.length) return toast.error("Cart is empty.");
-    setProcessing(true);
-    try {
-      const { data } = await api.post("/sales", {
-        items: cart.map((i) => ({ medicineId: i._id, quantity: i.qty })),
-        notes: notes.trim() || undefined,
-      });
-      if (data.success) {
-        toast.success("Sale processed successfully!");
-        setLastReceipt({ ...data.data, cartSnapshot: [...cart] });
+      // Check if any special drug details are filled
+      const isSpecialDrugFilled = Object.values(specialDrugDetails).some(v => v.trim() !== "");
+      if (isSpecialDrugFilled) {
+        const { drugName, buyerName, buyerIdNumber, buyerPhoneNumber } = specialDrugDetails;
+        if (!drugName || !buyerName || !buyerIdNumber || !buyerPhoneNumber) {
+          return toast.error("Please fill all special drug details or clear them all.");
+        }
+      }
 
-        // Show real-time popup for each item that is now low/out of stock
-        const stockAlerts = data.stockAlerts || [];
+      setProcessing(true);
+      try {
+        const { data } = await api.post("/sales", {
+          items: cart.map((i) => ({ medicineId: i._id, quantity: i.qty })),
+          notes: notes.trim() || undefined,
+          specialDrugDetails: isSpecialDrugFilled ? specialDrugDetails : undefined,
+        });
+        if (data.success) {
+          toast.success("Sale processed successfully!");
+          setLastReceipt({ ...data.data, cartSnapshot: [...cart] });
+
+          // Show real-time popup for each item that is now low/out of stock
+    ...
+          setCart([]);
+          setNotes("");
+          setSpecialDrugDetails({
+            drugName: "",
+            buyerName: "",
+            buyerIdNumber: "",
+            buyerPhoneNumber: "",
+          });
+          fetchMedicines();
         stockAlerts.forEach((alert) => {
           if (alert.alertType === "out_of_stock") {
             showPopup(
@@ -299,6 +326,63 @@ export default function BillingPage() {
 
           {cart.length > 0 && (
             <div className="cart-checkout">
+              <div className="special-drug-section border-bottom mb-3 pb-3">
+                <h4 className="text-sm font-bold mb-2 d-flex align-items-center gap-2 text-secondary">
+                  <AppIcon icon={faPrescriptionBottleMedical} />
+                  Special Drug Details (Controlled)
+                </h4>
+                <div className="special-drug-grid">
+                  <div className="form-group mb-2">
+                    <label className="text-xs text-muted mb-1 d-block">Drug Name</label>
+                    <div className="input-with-icon-sm">
+                      <AppIcon icon={faPrescriptionBottleMedical} className="input-icon-sm" />
+                      <input
+                        className="form-control form-control-sm"
+                        placeholder="Drug name..."
+                        value={specialDrugDetails.drugName}
+                        onChange={(e) => setSpecialDrugDetails({...specialDrugDetails, drugName: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group mb-2">
+                    <label className="text-xs text-muted mb-1 d-block">Buyer Name</label>
+                    <div className="input-with-icon-sm">
+                      <AppIcon icon={faUser} className="input-icon-sm" />
+                      <input
+                        className="form-control form-control-sm"
+                        placeholder="Full name..."
+                        value={specialDrugDetails.buyerName}
+                        onChange={(e) => setSpecialDrugDetails({...specialDrugDetails, buyerName: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group mb-2">
+                    <label className="text-xs text-muted mb-1 d-block">ID Number</label>
+                    <div className="input-with-icon-sm">
+                      <AppIcon icon={faIdCard} className="input-icon-sm" />
+                      <input
+                        className="form-control form-control-sm"
+                        placeholder="ID/Passport..."
+                        value={specialDrugDetails.buyerIdNumber}
+                        onChange={(e) => setSpecialDrugDetails({...specialDrugDetails, buyerIdNumber: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group mb-2">
+                    <label className="text-xs text-muted mb-1 d-block">Phone Number</label>
+                    <div className="input-with-icon-sm">
+                      <AppIcon icon={faPhone} className="input-icon-sm" />
+                      <input
+                        className="form-control form-control-sm"
+                        placeholder="Phone..."
+                        value={specialDrugDetails.buyerPhoneNumber}
+                        onChange={(e) => setSpecialDrugDetails({...specialDrugDetails, buyerPhoneNumber: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="cart-notes-row">
                 <label className="cart-notes-label">
                   <AppIcon icon={faStickyNote} />

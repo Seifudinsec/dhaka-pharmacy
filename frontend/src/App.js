@@ -21,6 +21,7 @@ import {
   faMoon,
   faSun,
   faPills,
+  faPrescriptionBottleMedical,
   faRightFromBracket,
 } from "@fortawesome/free-solid-svg-icons";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -36,6 +37,7 @@ import ImportPage from "./pages/ImportPage";
 import SettingsPage from "./pages/SettingsPage";
 import ReportsPage from "./pages/ReportsPage";
 import UsersManagementPage from "./pages/UsersManagementPage";
+import SpecialDrugsPage from "./pages/SpecialDrugsPage";
 import AppIcon from "./components/common/AppIcon";
 import InstallAppButton from "./components/common/InstallAppButton";
 import NotificationBell from "./components/common/NotificationBell";
@@ -49,6 +51,11 @@ const getNavigationItems = (userRole) => {
     { path: "/inventory", icon: faBoxesStacked, label: "Inventory" },
     { path: "/billing", icon: faFileInvoiceDollar, label: "Billing" },
     { path: "/sales", icon: faMoneyBillTrendUp, label: "Sales History" },
+    {
+      path: "/special-drugs",
+      icon: faPrescriptionBottleMedical,
+      label: "Special Drugs",
+    },
     { path: "/import", icon: faFileImport, label: "Bulk Import" },
   ];
 
@@ -309,6 +316,7 @@ const AppLayout = ({ theme, setTheme }) => {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/billing" element={<BillingPage />} />
             <Route path="/sales" element={<SalesPage />} />
+            <Route path="/special-drugs" element={<SpecialDrugsPage />} />
             <Route path="/import" element={<ImportPage />} />
             <Route
               path="/reports"

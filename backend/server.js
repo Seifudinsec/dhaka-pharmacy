@@ -14,6 +14,7 @@ const settingsRoutes = require("./routes/settings");
 const reportsRoutes = require("./routes/reports");
 const returnsRoutes = require("./routes/returns");
 const auditRoutes = require("./routes/audit");
+const specialDrugsRoutes = require("./routes/special-drugs");
 
 const app = express();
 const http = require("http");
@@ -66,6 +67,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/returns", returnsRoutes);
 app.use("/api/audit", auditRoutes);
+app.use("/api/special-drugs", specialDrugsRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

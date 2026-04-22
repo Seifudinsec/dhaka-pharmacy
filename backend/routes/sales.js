@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const router = express.Router();
 const Sale = require("../models/Sale");
 const Medicine = require("../models/Medicine");
+const SpecialDrug = require("../models/SpecialDrug");
 const { protect } = require("../middleware/auth");
 
 const { getIO } = require("../config/socket");
@@ -66,13 +67,25 @@ router.post("/", async (req, res) => {
   let createdSale = null;
 
   try {
-    const { items, notes } = req.body;
+    const { items, notes, specialDrugDetails } = req.body;
 
     if (!items?.length) {
       return res.status(400).json({
         success: false,
         message: "Sale must contain at least one item.",
       });
+    }
+
+    if (specialDrugDetails) {
+      const { drugName, buyerName, buyerIdNumber, buyerPhoneNumber } =
+        specialDrugDetails;
+      if (!drugName || !buyerName || !buyerIdNumber || !buyerPhoneNumber) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Special drug details are incomplete. All fields are required if filled.",
+        });
+      }
     }
 
     const stockAlerts = [];
@@ -177,6 +190,21 @@ router.post("/", async (req, res) => {
         ],
         { session },
       );
+
+      if (specialDrugDetails) {
+        const [record] = await SpecialDrug.create(
+          [
+            {
+              ...specialDrugDetails,
+              sale: sale._id,
+              recordedBy: req.user._id,
+            },
+          ],
+          { session },
+        );
+        sale.specialDrugRecord = record._id;
+        await sale.save({ session });
+      }
 
       createdSale = sale;
     });

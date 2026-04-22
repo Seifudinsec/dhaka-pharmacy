@@ -4108,3 +4108,40 @@ tbody tr:hover {
     color: #d6e0f0;
     background: rgba(255, 255, 255, 0.08);
 }
+
+/* Special Drug Section */
+.special-drug-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+@media (max-width: 576px) {
+  .special-drug-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.input-with-icon-sm {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon-sm {
+  position: absolute;
+  left: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.input-with-icon-sm .form-control-sm {
+  padding-left: 2rem;
+  font-size: 0.8125rem;
+  height: 2.25rem;
+}
+
+[data-theme="dark"] .special-drug-section {
+  border-color: var(--border-color);
+}
