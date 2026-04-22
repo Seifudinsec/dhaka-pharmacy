@@ -97,40 +97,41 @@ export default function BillingPage() {
         return prev;
       }
       return prev.map((i) => (i._id === id ? { ...i, qty: newQty } : i));
-    const handleSale = async () => {
-      if (!cart.length) return toast.error("Cart is empty.");
+    });
+  };
 
-      // Check if any special drug details are filled
-      const isSpecialDrugFilled = Object.values(specialDrugDetails).some(v => v.trim() !== "");
-      if (isSpecialDrugFilled) {
-        const { drugName, buyerName, buyerIdNumber, buyerPhoneNumber } = specialDrugDetails;
-        if (!drugName || !buyerName || !buyerIdNumber || !buyerPhoneNumber) {
-          return toast.error("Please fill all special drug details or clear them all.");
-        }
+  const handleSale = async () => {
+    if (!cart.length) return toast.error("Cart is empty.");
+
+    // Check if any special drug details are filled
+    const isSpecialDrugFilled = Object.values(specialDrugDetails).some(
+      (v) => v.trim() !== "",
+    );
+    if (isSpecialDrugFilled) {
+      const { drugName, buyerName, buyerIdNumber, buyerPhoneNumber } =
+        specialDrugDetails;
+      if (!drugName || !buyerName || !buyerIdNumber || !buyerPhoneNumber) {
+        return toast.error(
+          "Please fill all special drug details or clear them all.",
+        );
       }
+    }
 
-      setProcessing(true);
-      try {
-        const { data } = await api.post("/sales", {
-          items: cart.map((i) => ({ medicineId: i._id, quantity: i.qty })),
-          notes: notes.trim() || undefined,
-          specialDrugDetails: isSpecialDrugFilled ? specialDrugDetails : undefined,
-        });
-        if (data.success) {
-          toast.success("Sale processed successfully!");
-          setLastReceipt({ ...data.data, cartSnapshot: [...cart] });
+    setProcessing(true);
+    try {
+      const { data } = await api.post("/sales", {
+        items: cart.map((i) => ({ medicineId: i._id, quantity: i.qty })),
+        notes: notes.trim() || undefined,
+        specialDrugDetails: isSpecialDrugFilled
+          ? specialDrugDetails
+          : undefined,
+      });
+      if (data.success) {
+        toast.success("Sale processed successfully!");
+        setLastReceipt({ ...data.data, cartSnapshot: [...cart] });
 
-          // Show real-time popup for each item that is now low/out of stock
-    ...
-          setCart([]);
-          setNotes("");
-          setSpecialDrugDetails({
-            drugName: "",
-            buyerName: "",
-            buyerIdNumber: "",
-            buyerPhoneNumber: "",
-          });
-          fetchMedicines();
+        // Show real-time popup for each item that is now low/out of stock
+        const stockAlerts = data.stockAlerts || [];
         stockAlerts.forEach((alert) => {
           if (alert.alertType === "out_of_stock") {
             showPopup(
@@ -151,6 +152,12 @@ export default function BillingPage() {
 
         setCart([]);
         setNotes("");
+        setSpecialDrugDetails({
+          drugName: "",
+          buyerName: "",
+          buyerIdNumber: "",
+          buyerPhoneNumber: "",
+        });
         fetchMedicines();
         window.dispatchEvent(
           new CustomEvent("dataChanged", { detail: { type: "sale" } }),
@@ -333,50 +340,81 @@ export default function BillingPage() {
                 </h4>
                 <div className="special-drug-grid">
                   <div className="form-group mb-2">
-                    <label className="text-xs text-muted mb-1 d-block">Drug Name</label>
+                    <label className="text-xs text-muted mb-1 d-block">
+                      Drug Name
+                    </label>
                     <div className="input-with-icon-sm">
-                      <AppIcon icon={faPrescriptionBottleMedical} className="input-icon-sm" />
+                      <AppIcon
+                        icon={faPrescriptionBottleMedical}
+                        className="input-icon-sm"
+                      />
                       <input
                         className="form-control form-control-sm"
                         placeholder="Drug name..."
                         value={specialDrugDetails.drugName}
-                        onChange={(e) => setSpecialDrugDetails({...specialDrugDetails, drugName: e.target.value})}
+                        onChange={(e) =>
+                          setSpecialDrugDetails({
+                            ...specialDrugDetails,
+                            drugName: e.target.value,
+                          })
+                        }
                       />
                     </div>
                   </div>
                   <div className="form-group mb-2">
-                    <label className="text-xs text-muted mb-1 d-block">Buyer Name</label>
+                    <label className="text-xs text-muted mb-1 d-block">
+                      Buyer Name
+                    </label>
                     <div className="input-with-icon-sm">
                       <AppIcon icon={faUser} className="input-icon-sm" />
                       <input
                         className="form-control form-control-sm"
                         placeholder="Full name..."
                         value={specialDrugDetails.buyerName}
-                        onChange={(e) => setSpecialDrugDetails({...specialDrugDetails, buyerName: e.target.value})}
+                        onChange={(e) =>
+                          setSpecialDrugDetails({
+                            ...specialDrugDetails,
+                            buyerName: e.target.value,
+                          })
+                        }
                       />
                     </div>
                   </div>
                   <div className="form-group mb-2">
-                    <label className="text-xs text-muted mb-1 d-block">ID Number</label>
+                    <label className="text-xs text-muted mb-1 d-block">
+                      ID Number
+                    </label>
                     <div className="input-with-icon-sm">
                       <AppIcon icon={faIdCard} className="input-icon-sm" />
                       <input
                         className="form-control form-control-sm"
                         placeholder="ID/Passport..."
                         value={specialDrugDetails.buyerIdNumber}
-                        onChange={(e) => setSpecialDrugDetails({...specialDrugDetails, buyerIdNumber: e.target.value})}
+                        onChange={(e) =>
+                          setSpecialDrugDetails({
+                            ...specialDrugDetails,
+                            buyerIdNumber: e.target.value,
+                          })
+                        }
                       />
                     </div>
                   </div>
                   <div className="form-group mb-2">
-                    <label className="text-xs text-muted mb-1 d-block">Phone Number</label>
+                    <label className="text-xs text-muted mb-1 d-block">
+                      Phone Number
+                    </label>
                     <div className="input-with-icon-sm">
                       <AppIcon icon={faPhone} className="input-icon-sm" />
                       <input
                         className="form-control form-control-sm"
                         placeholder="Phone..."
                         value={specialDrugDetails.buyerPhoneNumber}
-                        onChange={(e) => setSpecialDrugDetails({...specialDrugDetails, buyerPhoneNumber: e.target.value})}
+                        onChange={(e) =>
+                          setSpecialDrugDetails({
+                            ...specialDrugDetails,
+                            buyerPhoneNumber: e.target.value,
+                          })
+                        }
                       />
                     </div>
                   </div>
