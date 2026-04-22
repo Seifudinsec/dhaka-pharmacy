@@ -42,6 +42,22 @@ export default function ImportPage() {
   const [showDuplicateFileRows, setShowDuplicateFileRows] = useState(false);
   const inputRef = useRef();
 
+  const getRowsByType = () => {
+    if (!preview) {
+      return { new: [], update: [], duplicate: [], invalid: [] };
+    }
+    if (preview.rowsByType) return preview.rowsByType;
+
+    const grouped = { new: [], update: [], duplicate: [], invalid: [] };
+    (preview.rows || []).forEach((row) => {
+      if (row.classification === "NEW") grouped.new.push(row);
+      else if (row.classification === "UPDATE") grouped.update.push(row);
+      else if (row.classification === "DUPLICATE") grouped.duplicate.push(row);
+      else grouped.invalid.push(row);
+    });
+    return grouped;
+  };
+
   const handleFile = (f) => {
     if (!f) return;
     const ext = f.name.split(".").pop().toLowerCase();
@@ -134,6 +150,9 @@ export default function ImportPage() {
         );
       }
       toast.error(serverData?.message || "Import failed.");
+      if (serverData?.details?.code) {
+        console.error("Import commit error:", serverData.details);
+      }
     } finally {
       setCommitting(false);
     }
@@ -446,6 +465,81 @@ export default function ImportPage() {
                 <div className="s-label">Invalid</div>
               </div>
             </div>
+
+            {(() => {
+              const rowsByType = getRowsByType();
+              const sections = [
+                { key: "new", title: "New Medicines", rows: rowsByType.new },
+                {
+                  key: "update",
+                  title: "Updated Medicines",
+                  rows: rowsByType.update,
+                },
+                { key: "duplicate", title: "Duplicates", rows: rowsByType.duplicate },
+                { key: "invalid", title: "Failed / Invalid", rows: rowsByType.invalid },
+              ];
+
+              return (
+                <div style={{ marginBottom: 16 }}>
+                  {sections.map((section) => (
+                    <div key={section.key} style={{ marginBottom: 12 }}>
+                      <h3
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 700,
+                          marginBottom: 8,
+                          color: "var(--gray-700)",
+                        }}
+                      >
+                        {section.title} ({section.rows?.length || 0})
+                      </h3>
+                      {!section.rows?.length ? (
+                        <div
+                          style={{
+                            padding: "8px 10px",
+                            border: "1px solid var(--gray-100)",
+                            borderRadius: "var(--radius-sm)",
+                            fontSize: 12,
+                            color: "var(--gray-500)",
+                          }}
+                        >
+                          None
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            maxHeight: 170,
+                            overflowY: "auto",
+                            border: "1px solid var(--gray-200)",
+                            borderRadius: "var(--radius-sm)",
+                          }}
+                        >
+                          {section.rows.map((r, idx) => (
+                            <div
+                              key={`${section.key}-${r.rowNumber}-${idx}`}
+                              style={{
+                                padding: "8px 12px",
+                                borderBottom: "1px solid var(--gray-100)",
+                                fontSize: 13,
+                              }}
+                            >
+                              <strong>Row {r.rowNumber}</strong>:{" "}
+                              {r.productName || "N/A"} / {r.batchNumber || "N/A"} /{" "}
+                              {r.expiryDate || "N/A"} / Qty {r.quantity ?? "N/A"}
+                              {r.reason ? (
+                                <div style={{ marginTop: 3, color: "var(--gray-500)" }}>
+                                  {r.reason}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             <label
               style={{

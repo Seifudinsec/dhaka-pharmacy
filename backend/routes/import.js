@@ -381,6 +381,41 @@ const summarizeClassifications = (classifiedRows) => {
   return summary;
 };
 
+const mapPreviewRow = (row) => ({
+  rowNumber: row.rowNumber,
+  classification: row.classification,
+  reason: row.reason,
+  productName: row.data?.productName || null,
+  batchNumber: row.data?.batchNumber || null,
+  expiryDate: row.data?.expiryDateKey || null,
+  quantity: row.data?.quantity ?? null,
+});
+
+const splitPreviewRows = (classifiedRows, limitPerType = 200) => {
+  const rowsByType = {
+    new: [],
+    update: [],
+    duplicate: [],
+    invalid: [],
+  };
+
+  for (const row of classifiedRows) {
+    const mapped = mapPreviewRow(row);
+    if (row.classification === "NEW") {
+      if (rowsByType.new.length < limitPerType) rowsByType.new.push(mapped);
+    } else if (row.classification === "UPDATE") {
+      if (rowsByType.update.length < limitPerType) rowsByType.update.push(mapped);
+    } else if (row.classification === "DUPLICATE") {
+      if (rowsByType.duplicate.length < limitPerType)
+        rowsByType.duplicate.push(mapped);
+    } else {
+      if (rowsByType.invalid.length < limitPerType) rowsByType.invalid.push(mapped);
+    }
+  }
+
+  return rowsByType;
+};
+
 const buildDuplicateFileDetails = (historyDoc) => {
   if (!historyDoc) return null;
   return {
@@ -426,15 +461,8 @@ const runPreview = async (req, res) => {
     duplicateFile: !!duplicateImport,
     duplicateFileDetails: buildDuplicateFileDetails(duplicateImport),
     summary,
-    rows: classifiedRows.slice(0, 250).map((row) => ({
-      rowNumber: row.rowNumber,
-      classification: row.classification,
-      reason: row.reason,
-      productName: row.data?.productName || null,
-      batchNumber: row.data?.batchNumber || null,
-      expiryDate: row.data?.expiryDateKey || null,
-      quantity: row.data?.quantity ?? null,
-    })),
+    rows: classifiedRows.slice(0, 300).map(mapPreviewRow),
+    rowsByType: splitPreviewRows(classifiedRows, 200),
   });
 };
 
@@ -469,26 +497,41 @@ const upsertMedicineForImport = async (rowData, importId, session) => {
   }
 
   if (!existing) {
-    const created = await Medicine.create(
-      [
-        {
-          name: rowData.productName,
-          normalizedName: rowData.normalizedProductName,
-          productKey: rowData.productKey,
-          price: rowData.sellingPrice,
-          buyingPrice: rowData.buyingPrice,
-          batchNumber: rowData.batchNumber,
-          batchNumberNormalized: rowData.batchNumberNormalized,
-          stock: rowData.quantity,
-          expiryDate: rowData.expiryDate,
-          expiryDateKey: rowData.expiryDateKey,
-          status: "active",
-          lastImportId: importId,
-        },
-      ],
-      { session },
+    try {
+      const created = await Medicine.create(
+        [
+          {
+            name: rowData.productName,
+            normalizedName: rowData.normalizedProductName,
+            productKey: rowData.productKey,
+            price: rowData.sellingPrice,
+            buyingPrice: rowData.buyingPrice,
+            batchNumber: rowData.batchNumber,
+            batchNumberNormalized: rowData.batchNumberNormalized,
+            stock: rowData.quantity,
+            expiryDate: rowData.expiryDate,
+            expiryDateKey: rowData.expiryDateKey,
+            status: "active",
+            lastImportId: importId,
+          },
+        ],
+        { session },
+      );
+      return { medicineId: created[0]._id, type: "NEW" };
+    } catch (createError) {
+      // Race condition safety: if another operation inserted same batch key, recover and update.
+      if (createError?.code === 11000) {
+        existing = await Medicine.findOne(filter).session(session);
+      } else {
+        throw createError;
+      }
+    }
+  }
+
+  if (!existing) {
+    throw new Error(
+      `Could not resolve medicine batch for ${rowData.productName} (${rowData.batchNumber})`,
     );
-    return { medicineId: created[0]._id, type: "NEW" };
   }
 
   const nextStock = Number(existing.stock || 0) === 0
@@ -561,7 +604,37 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
   );
   const classifiedRows = await classifyRows(normalizedRows);
   const previewSummary = summarizeClassifications(classifiedRows);
-  const importId = req.body?.importId || crypto.randomUUID();
+  let importId = req.body?.importId || crypto.randomUUID();
+
+  const existingByImportId = await ImportHistory.findOne({ importId }).lean();
+  if (existingByImportId) {
+    if (existingByImportId.status === "completed") {
+      return res.json({
+        success: true,
+        message: "This import confirmation was already processed.",
+        importId,
+        summary: existingByImportId.summary || {
+          added: 0,
+          updated: 0,
+          duplicate: 0,
+          invalid: 0,
+          processed: 0,
+          total: existingByImportId.totalRows || 0,
+        },
+      });
+    }
+
+    if (existingByImportId.status === "processing") {
+      return res.status(409).json({
+        success: false,
+        message: "This import is already being processed. Please wait.",
+        importId,
+      });
+    }
+
+    // Failed/pre-existing import id can be retried with a new id.
+    importId = crypto.randomUUID();
+  }
   const summary = {
     added: 0,
     updated: 0,
@@ -732,6 +805,14 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
     return res.status(500).json({
       success: false,
       message: `Server error during import: ${error.message || "Unknown error"}`,
+      details:
+        process.env.NODE_ENV === "development"
+          ? {
+              name: error.name,
+              code: error.code,
+              stack: error.stack,
+            }
+          : undefined,
     });
   } finally {
     await session.endSession();
