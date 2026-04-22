@@ -65,15 +65,6 @@ const strictRowIdentityFromData = (data) =>
     Number(data.buyingPrice).toFixed(4),
   ].join("|");
 
-const strictRowIdentityFromStored = (stored) =>
-  [
-    normalizeName(stored.productName || ""),
-    String(stored.batchNumber || "").trim(),
-    String(stored.expiryDateKey || "").trim(),
-    String(stored.quantity),
-    Number(stored.buyingPrice).toFixed(4),
-  ].join("|");
-
 const escapeRegex = (value = "") =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -293,54 +284,26 @@ const validateAndNormalizeRow = (rawRow, mapping) => {
 
 const classifyRows = async (normalizedRows) => {
   const validRows = normalizedRows.filter((r) => r.valid).map((r) => r.data);
-  const rowKeys = [...new Set(validRows.map((r) => r.rowKey))];
   const productKeys = [...new Set(validRows.map((r) => r.productKey))];
 
-  const [existingProcessedRows, candidateMedicines] = await Promise.all([
-    rowKeys.length
-      ? ImportRow.find(
-          {
-            rowKey: { $in: rowKeys },
-            status: "processed",
-          },
-          {
-            rowKey: 1,
-            productName: 1,
-            batchNumber: 1,
-            expiryDateKey: 1,
-            quantity: 1,
-            buyingPrice: 1,
-            rowNumber: 1,
-            importId: 1,
-          },
-        ).lean()
-      : [],
-    productKeys.length
-      ? Medicine.find(
-          {
-            $or: [
-              { productKey: { $in: productKeys } },
-              { normalizedName: { $in: productKeys } },
-            ],
-          },
-          {
-            _id: 1,
-            productKey: 1,
-            normalizedName: 1,
-            batchNumberNormalized: 1,
-            expiryDateKey: 1,
-            stock: 1,
-          },
-        ).lean()
-      : [],
-  ]);
-
-  const processedRowsByKey = new Map();
-  for (const row of existingProcessedRows) {
-    const list = processedRowsByKey.get(row.rowKey) || [];
-    list.push(row);
-    processedRowsByKey.set(row.rowKey, list);
-  }
+  const candidateMedicines = productKeys.length
+    ? await Medicine.find(
+        {
+          $or: [
+            { productKey: { $in: productKeys } },
+            { normalizedName: { $in: productKeys } },
+          ],
+        },
+        {
+          _id: 1,
+          productKey: 1,
+          normalizedName: 1,
+          batchNumberNormalized: 1,
+          expiryDateKey: 1,
+          stock: 1,
+        },
+      ).lean()
+    : [];
   const medicineMap = new Map();
   for (const med of candidateMedicines) {
     const medProductKey = med.productKey || med.normalizedName;
@@ -371,21 +334,6 @@ const classifyRows = async (normalizedRows) => {
       };
     }
     inFileSeen.set(strictIdentity, row.rowNumber);
-
-    const processedMatches = processedRowsByKey.get(data.rowKey) || [];
-    if (processedMatches.length) {
-      const strictMatch = processedMatches.find(
-        (stored) => strictRowIdentityFromStored(stored) === strictIdentity,
-      );
-      if (strictMatch) {
-        return {
-          rowNumber: row.rowNumber,
-          classification: "DUPLICATE",
-          reason: `Row was already processed in import ${strictMatch.importId}`,
-          data,
-        };
-      }
-    }
 
     const matchKey = `${data.productKey}|${data.batchNumberNormalized}|${data.expiryDateKey}`;
     const existing = medicineMap.get(matchKey);
@@ -483,12 +431,6 @@ const runPreview = async (req, res) => {
   }
 
   const fileHash = fileHashFromBuffer(req.file.buffer);
-  const duplicateImport = await ImportHistory.findOne({
-    fileHash,
-    status: "completed",
-  })
-    .sort({ createdAt: -1 })
-    .lean();
 
   const normalizedRows = parsed.rows.map((row) =>
     validateAndNormalizeRow(row, parsed.headerMapping),
@@ -504,8 +446,8 @@ const runPreview = async (req, res) => {
     importId,
     fileHash,
     fileName: req.file.originalname,
-    duplicateFile: !!duplicateImport,
-    duplicateFileDetails: buildDuplicateFileDetails(duplicateImport),
+    duplicateFile: false,
+    duplicateFileDetails: null,
     summary,
     rows: classifiedRows.slice(0, 300).map(mapPreviewRow),
     rowsByType: splitPreviewRows(classifiedRows, 200),
@@ -659,23 +601,6 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
   }
 
   const fileHash = fileHashFromBuffer(req.file.buffer);
-  const duplicateImport = await ImportHistory.findOne({
-    fileHash,
-    status: "completed",
-  })
-    .sort({ createdAt: -1 })
-    .lean();
-
-  if (duplicateImport && !forceImport) {
-    return res.status(409).json({
-      success: false,
-      code: "DUPLICATE_FILE",
-      message: "This file has already been imported.",
-      duplicateFileDetails: buildDuplicateFileDetails(duplicateImport),
-      options: ["cancel", "force_import", "view_duplicate_file"],
-    });
-  }
-
   const normalizedRows = parsed.rows.map((row) =>
     validateAndNormalizeRow(row, parsed.headerMapping),
   );
@@ -739,7 +664,7 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
       },
       status: "processing",
       forced: forceImport,
-      duplicateOfImportId: duplicateImport?.importId || null,
+      duplicateOfImportId: null,
       createdBy: req.user?._id,
       previewSnapshot: classifiedRows.slice(0, 50).map((row) => ({
         rowNumber: row.rowNumber,
