@@ -530,6 +530,14 @@ export default function ImportPage() {
                               <strong>Row {r.rowNumber}</strong>:{" "}
                               {r.productName || "N/A"} / {r.batchNumber || "N/A"} /{" "}
                               {r.expiryDate || "N/A"} / Qty {r.quantity ?? "N/A"}
+                              {section.key === "duplicate" ? (
+                                <div
+                                  style={{ marginTop: 3, color: "var(--gray-500)" }}
+                                  title={`Compared fields:\nproduct_name(normalized): ${String(r.productName || "").trim().toLowerCase()}\nbatch_no(trim): ${String(r.batchNumber || "").trim()}\nexpiry_date: ${r.expiryDate || "N/A"}\nquantity: ${r.quantity ?? "N/A"}\nbuying_price: ${r.buyingPrice ?? "N/A"}\n\nRule: ${r.duplicateRule || "normalized(product_name)+batch+expiry+qty+buying_price"}`}
+                                >
+                                  Why marked duplicate? (hover)
+                                </div>
+                              ) : null}
                               {r.reason ? (
                                 <div style={{ marginTop: 3, color: "var(--gray-500)" }}>
                                   {r.reason}

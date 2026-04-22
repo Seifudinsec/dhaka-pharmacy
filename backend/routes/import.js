@@ -431,6 +431,9 @@ const mapPreviewRow = (row) => ({
   batchNumber: row.data?.batchNumber || null,
   expiryDate: row.data?.expiryDateKey || null,
   quantity: row.data?.quantity ?? null,
+  buyingPrice: row.data?.buyingPrice ?? null,
+  duplicateRule:
+    "normalized(product_name) + batch_no.trim() + expiry_date + quantity + buying_price",
 });
 
 const splitPreviewRows = (classifiedRows, limitPerType = 200) => {
