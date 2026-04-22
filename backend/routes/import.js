@@ -703,7 +703,7 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
     await ImportHistory.create({
       importId,
       fileHash,
-      fileName: req.file.originalname,
+      fileName,
       totalRows: previewSummary.total,
       summary: {
         added: 0,
@@ -849,7 +849,7 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
         userAgent: req.get("User-Agent"),
         metadata: {
           importId,
-          fileName: req.file.originalname,
+          fileName,
           fileHash,
           forced: forceImport,
           summary,
@@ -936,8 +936,16 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
   });
 };
 
-router.post("/preview", upload.single("file"), runPreview);
-router.post("/commit", upload.single("file"), (req, res) =>
+const optionalUpload = (req, res, next) => {
+  const contentType = req.headers["content-type"] || "";
+  if (contentType.includes("multipart/form-data")) {
+    return upload.single("file")(req, res, next);
+  }
+  next();
+};
+
+router.post("/preview", optionalUpload, runPreview);
+router.post("/commit", optionalUpload, (req, res) =>
   runCommit(req, res, { legacy: false }),
 );
 
