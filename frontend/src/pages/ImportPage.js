@@ -126,6 +126,7 @@ export default function ImportPage() {
 
       const { data } = await api.post("/import/commit", formData, {
         headers: { "Content-Type": "multipart/form-data" },
+        timeout: 180000,
       });
 
       setResult(data);

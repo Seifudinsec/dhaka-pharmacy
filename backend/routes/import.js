@@ -1,6 +1,5 @@
 const crypto = require("crypto");
 const express = require("express");
-const mongoose = require("mongoose");
 const multer = require("multer");
 const XLSX = require("xlsx");
 const Medicine = require("../models/Medicine");
@@ -492,21 +491,6 @@ const runPreview = async (req, res) => {
     validateAndNormalizeRow(row, parsed.headerMapping),
   );
 
-  // Temporary debug support for duplicate diagnosis
-  for (const row of normalizedRows) {
-    if (!row.valid || !row.data) continue;
-    console.log("[IMPORT_PREVIEW_ROW_DEBUG]", {
-      rowNumber: row.rowNumber,
-      product_name: row.data.productName,
-      batch_no: row.data.batchNumber,
-      expiry_date: row.data.expiryDateKey,
-      quantity: row.data.quantity,
-      buying_price: row.data.buyingPrice,
-      row_key_input: row.data.rowKeyInput,
-      row_key: row.data.rowKey,
-    });
-  }
-
   const classifiedRows = await classifyRows(normalizedRows);
   const summary = summarizeClassifications(classifiedRows);
   const importId = crypto.randomUUID();
@@ -530,9 +514,25 @@ const insertImportRowsInBatches = async (rows, session) => {
   for (let i = 0; i < rows.length; i += chunkSize) {
     const chunk = rows.slice(i, i + chunkSize);
     if (chunk.length) {
-      await ImportRow.insertMany(chunk, { session, ordered: false });
+      const options = session ? { session, ordered: false } : { ordered: false };
+      await ImportRow.insertMany(chunk, options);
     }
   }
+};
+
+const processWithConcurrency = async (items, concurrency, worker) => {
+  const queue = [...items];
+  const workers = Array.from(
+    { length: Math.max(1, Math.min(concurrency, items.length || 1)) },
+    async () => {
+      while (queue.length) {
+        const next = queue.shift();
+        if (!next) return;
+        await worker(next);
+      }
+    },
+  );
+  await Promise.all(workers);
 };
 
 const upsertMedicineForImport = async (rowData, importId, session) => {
@@ -542,45 +542,60 @@ const upsertMedicineForImport = async (rowData, importId, session) => {
     expiryDateKey: rowData.expiryDateKey,
   };
 
-  let existing = await Medicine.findOne(filter).session(session);
+  let existing;
+  if (session) {
+    existing = await Medicine.findOne(filter).session(session);
+  } else {
+    existing = await Medicine.findOne(filter);
+  }
   if (!existing) {
     // Backward compatibility for legacy records without normalized fields
-    existing = await Medicine.findOne({
+    const legacyQuery = {
       name: { $regex: `^${escapeRegex(rowData.productName)}$`, $options: "i" },
       batchNumber: {
         $regex: `^${escapeRegex(rowData.batchNumber)}$`,
         $options: "i",
       },
       expiryDate: rowData.expiryDate,
-    }).session(session);
+    };
+    if (session) {
+      existing = await Medicine.findOne(legacyQuery).session(session);
+    } else {
+      existing = await Medicine.findOne(legacyQuery);
+    }
   }
 
   if (!existing) {
     try {
+      const createPayload = [
+        {
+          name: rowData.productName,
+          normalizedName: rowData.normalizedProductName,
+          productKey: rowData.productKey,
+          price: rowData.sellingPrice,
+          buyingPrice: rowData.buyingPrice,
+          batchNumber: rowData.batchNumber,
+          batchNumberNormalized: rowData.batchNumberNormalized,
+          stock: rowData.quantity,
+          expiryDate: rowData.expiryDate,
+          expiryDateKey: rowData.expiryDateKey,
+          status: "active",
+          lastImportId: importId,
+        },
+      ];
       const created = await Medicine.create(
-        [
-          {
-            name: rowData.productName,
-            normalizedName: rowData.normalizedProductName,
-            productKey: rowData.productKey,
-            price: rowData.sellingPrice,
-            buyingPrice: rowData.buyingPrice,
-            batchNumber: rowData.batchNumber,
-            batchNumberNormalized: rowData.batchNumberNormalized,
-            stock: rowData.quantity,
-            expiryDate: rowData.expiryDate,
-            expiryDateKey: rowData.expiryDateKey,
-            status: "active",
-            lastImportId: importId,
-          },
-        ],
-        { session },
+        createPayload,
+        session ? { session } : undefined,
       );
       return { medicineId: created[0]._id, type: "NEW" };
     } catch (createError) {
       // Race condition safety: if another operation inserted same batch key, recover and update.
       if (createError?.code === 11000) {
-        existing = await Medicine.findOne(filter).session(session);
+        if (session) {
+          existing = await Medicine.findOne(filter).session(session);
+        } else {
+          existing = await Medicine.findOne(filter);
+        }
       } else {
         throw createError;
       }
@@ -615,7 +630,7 @@ const upsertMedicineForImport = async (rowData, importId, session) => {
         lastImportId: importId,
       },
     },
-    { session },
+    session ? { session } : undefined,
   );
 
   return { medicineId: existing._id, type: "UPDATE" };
@@ -703,92 +718,65 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
     skipped: 0,
   };
 
-  const session = await mongoose.startSession();
   let importHistoryCreated = false;
 
   try {
-    await session.withTransaction(async () => {
-      await ImportHistory.create(
-        [
-          {
-            importId,
-            fileHash,
-            fileName: req.file.originalname,
-            totalRows: previewSummary.total,
-            summary: {
-              added: 0,
-              updated: 0,
-              duplicate: 0,
-              invalid: 0,
-              processed: 0,
-              skipped: 0,
-            },
-            status: "processing",
-            forced: forceImport,
-            duplicateOfImportId: duplicateImport?.importId || null,
-            createdBy: req.user?._id,
-            previewSnapshot: classifiedRows.slice(0, 50).map((row) => ({
-              rowNumber: row.rowNumber,
-              classification: row.classification,
-              reason: row.reason,
-              productName: row.data?.productName || null,
-              batchNumber: row.data?.batchNumber || null,
-              expiryDate: row.data?.expiryDateKey || null,
-              quantity: row.data?.quantity ?? null,
-            })),
-          },
-        ],
-        { session },
-      );
-      importHistoryCreated = true;
+    await ImportHistory.create({
+      importId,
+      fileHash,
+      fileName: req.file.originalname,
+      totalRows: previewSummary.total,
+      summary: {
+        added: 0,
+        updated: 0,
+        duplicate: 0,
+        invalid: 0,
+        processed: 0,
+        skipped: 0,
+      },
+      status: "processing",
+      forced: forceImport,
+      duplicateOfImportId: duplicateImport?.importId || null,
+      createdBy: req.user?._id,
+      previewSnapshot: classifiedRows.slice(0, 50).map((row) => ({
+        rowNumber: row.rowNumber,
+        classification: row.classification,
+        reason: row.reason,
+        productName: row.data?.productName || null,
+        batchNumber: row.data?.batchNumber || null,
+        expiryDate: row.data?.expiryDateKey || null,
+        quantity: row.data?.quantity ?? null,
+      })),
+    });
+    importHistoryCreated = true;
 
-      const importRowsToInsert = [];
-      for (const row of classifiedRows) {
-        if (row.classification === "INVALID") {
-          summary.invalid += 1;
-          summary.skipped += 1;
-          importRowsToInsert.push({
-            importId,
-            rowNumber: row.rowNumber,
-            rowKey: `invalid:${importId}:${row.rowNumber}`,
-            productName: "INVALID",
-            batchNumber: "INVALID",
-            expiryDateKey: "1970-01-01",
-            quantity: 0,
-            buyingPrice: 0,
-            sellingPrice: 0,
-            status: "invalid",
-            reason: row.reason,
-            medicine: null,
-          });
-          continue;
-        }
+    const importRowsToInsert = [];
+    const processableRows = [];
 
-        if (row.classification === "DUPLICATE" && !forceImport) {
-          summary.duplicate += 1;
-          summary.skipped += 1;
-          importRowsToInsert.push({
-            importId,
-            rowNumber: row.rowNumber,
-            rowKey: row.data.rowKey,
-            productName: row.data.productName,
-            batchNumber: row.data.batchNumber,
-            expiryDateKey: row.data.expiryDateKey,
-            quantity: row.data.quantity,
-            buyingPrice: row.data.buyingPrice,
-            sellingPrice: row.data.sellingPrice,
-            status: "duplicate",
-            reason: row.reason,
-            medicine: row.data.existingMedicineId || null,
-          });
-          continue;
-        }
+    for (const row of classifiedRows) {
+      if (row.classification === "INVALID") {
+        summary.invalid += 1;
+        summary.skipped += 1;
+        importRowsToInsert.push({
+          importId,
+          rowNumber: row.rowNumber,
+          rowKey: `invalid:${importId}:${row.rowNumber}`,
+          productName: "INVALID",
+          batchNumber: "INVALID",
+          expiryDateKey: "1970-01-01",
+          quantity: 0,
+          buyingPrice: 0,
+          sellingPrice: 0,
+          status: "invalid",
+          reason: row.reason,
+          medicine: null,
+        });
+        continue;
+      }
 
-        const upsertResult = await upsertMedicineForImport(row.data, importId, session);
-        summary.processed += 1;
-        if (upsertResult.type === "NEW") summary.added += 1;
-        else summary.updated += 1;
-
+      if (row.classification === "DUPLICATE" && !forceImport) {
+        summary.duplicate += 1;
+        summary.skipped += 1;
         importRowsToInsert.push({
           importId,
           rowNumber: row.rowNumber,
@@ -799,53 +787,71 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
           quantity: row.data.quantity,
           buyingPrice: row.data.buyingPrice,
           sellingPrice: row.data.sellingPrice,
-          status: "processed",
-          reason: forceImport && row.classification === "DUPLICATE"
+          status: "duplicate",
+          reason: row.reason,
+          medicine: row.data.existingMedicineId || null,
+        });
+        continue;
+      }
+
+      processableRows.push(row);
+    }
+
+    await processWithConcurrency(processableRows, 20, async (row) => {
+      const upsertResult = await upsertMedicineForImport(row.data, importId);
+      summary.processed += 1;
+      if (upsertResult.type === "NEW") summary.added += 1;
+      else summary.updated += 1;
+
+      importRowsToInsert.push({
+        importId,
+        rowNumber: row.rowNumber,
+        rowKey: row.data.rowKey,
+        productName: row.data.productName,
+        batchNumber: row.data.batchNumber,
+        expiryDateKey: row.data.expiryDateKey,
+        quantity: row.data.quantity,
+        buyingPrice: row.data.buyingPrice,
+        sellingPrice: row.data.sellingPrice,
+        status: "processed",
+        reason:
+          forceImport && row.classification === "DUPLICATE"
             ? "Processed with force import"
             : "",
-          medicine: upsertResult.medicineId,
-        });
-      }
-
-      await insertImportRowsInBatches(importRowsToInsert, session);
-
-      await ImportHistory.updateOne(
-        { importId },
-        {
-          $set: {
-            summary,
-            status: "completed",
-            completedAt: new Date(),
-          },
-        },
-        { session },
-      );
-
-      try {
-        await AuditLog.create(
-          [
-            {
-              user: req.user._id,
-              action: "MEDICINES_IMPORTED",
-              resourceType: "System",
-              description: `User ${req.user.username} imported medicines. Added ${summary.added}, updated ${summary.updated}, duplicates ${summary.duplicate}, invalid ${summary.invalid}.`,
-              ipAddress: req.ip || req.connection?.remoteAddress || "unknown",
-              userAgent: req.get("User-Agent"),
-              metadata: {
-                importId,
-                fileName: req.file.originalname,
-                fileHash,
-                forced: forceImport,
-                summary,
-              },
-            },
-          ],
-          { session },
-        );
-      } catch (auditError) {
-        // Audit failures should not fail import transaction
-      }
+        medicine: upsertResult.medicineId,
+      });
     });
+
+    await insertImportRowsInBatches(importRowsToInsert);
+
+    await ImportHistory.updateOne(
+      { importId },
+      {
+        $set: {
+          summary,
+          status: "completed",
+          completedAt: new Date(),
+        },
+      },
+    );
+
+    try {
+      await AuditLog.create({
+        user: req.user._id,
+        action: "MEDICINES_IMPORTED",
+        resourceType: "System",
+        description: `User ${req.user.username} imported medicines. Added ${summary.added}, updated ${summary.updated}, duplicates ${summary.duplicate}, invalid ${summary.invalid}.`,
+        ipAddress: req.ip || req.connection?.remoteAddress || "unknown",
+        userAgent: req.get("User-Agent"),
+        metadata: {
+          importId,
+          fileName: req.file.originalname,
+          fileHash,
+          forced: forceImport,
+          summary,
+        },
+      });
+    } catch (auditError) {}
   } catch (error) {
     if (error?.code === 11000 && String(error?.message || "").includes("importId")) {
       const existing = await ImportHistory.findOne({ importId }).lean();
@@ -903,9 +909,7 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
             }
           : undefined,
     });
-  } finally {
-    await session.endSession();
-  }
+  } finally {}
 
   return res.json({
     success: true,
@@ -926,11 +930,6 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
 router.post("/preview", upload.single("file"), runPreview);
 router.post("/commit", upload.single("file"), (req, res) =>
   runCommit(req, res, { legacy: false }),
-);
-
-// Legacy direct import endpoint kept for backward compatibility.
-router.post("/", upload.single("file"), (req, res) =>
-  runCommit(req, res, { legacy: true }),
 );
 
 router.use((err, req, res, next) => {
