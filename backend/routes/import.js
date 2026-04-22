@@ -57,6 +57,24 @@ const fileHashFromBuffer = (buffer) =>
 const hashRowKey = (input) =>
   crypto.createHash("sha256").update(input).digest("hex");
 
+const strictRowIdentityFromData = (data) =>
+  [
+    String(data.normalizedProductName || "").trim(),
+    String(data.batchNumber || "").trim(),
+    String(data.expiryDateKey || "").trim(),
+    String(data.quantity),
+    Number(data.buyingPrice).toFixed(4),
+  ].join("|");
+
+const strictRowIdentityFromStored = (stored) =>
+  [
+    normalizeName(stored.productName || ""),
+    String(stored.batchNumber || "").trim(),
+    String(stored.expiryDateKey || "").trim(),
+    String(stored.quantity),
+    Number(stored.buyingPrice).toFixed(4),
+  ].join("|");
+
 const escapeRegex = (value = "") =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -286,7 +304,16 @@ const classifyRows = async (normalizedRows) => {
             rowKey: { $in: rowKeys },
             status: "processed",
           },
-          { rowKey: 1 },
+          {
+            rowKey: 1,
+            productName: 1,
+            batchNumber: 1,
+            expiryDateKey: 1,
+            quantity: 1,
+            buyingPrice: 1,
+            rowNumber: 1,
+            importId: 1,
+          },
         ).lean()
       : [],
     productKeys.length
@@ -309,7 +336,12 @@ const classifyRows = async (normalizedRows) => {
       : [],
   ]);
 
-  const processedKeySet = new Set(existingProcessedRows.map((r) => r.rowKey));
+  const processedRowsByKey = new Map();
+  for (const row of existingProcessedRows) {
+    const list = processedRowsByKey.get(row.rowKey) || [];
+    list.push(row);
+    processedRowsByKey.set(row.rowKey, list);
+  }
   const medicineMap = new Map();
   for (const med of candidateMedicines) {
     const medProductKey = med.productKey || med.normalizedName;
@@ -317,7 +349,7 @@ const classifyRows = async (normalizedRows) => {
     medicineMap.set(key, med);
   }
 
-  const inFileSeen = new Set();
+  const inFileSeen = new Map();
   return normalizedRows.map((row) => {
     if (!row.valid) {
       return {
@@ -329,23 +361,31 @@ const classifyRows = async (normalizedRows) => {
     }
 
     const data = row.data;
-    if (inFileSeen.has(data.rowKey)) {
+    const strictIdentity = strictRowIdentityFromData(data);
+    if (inFileSeen.has(strictIdentity)) {
+      const firstRowNumber = inFileSeen.get(strictIdentity);
       return {
         rowNumber: row.rowNumber,
         classification: "DUPLICATE",
-        reason: "Duplicate row inside this upload file",
+        reason: `Duplicate row inside this upload file (matches row ${firstRowNumber})`,
         data,
       };
     }
-    inFileSeen.add(data.rowKey);
+    inFileSeen.set(strictIdentity, row.rowNumber);
 
-    if (processedKeySet.has(data.rowKey)) {
-      return {
-        rowNumber: row.rowNumber,
-        classification: "DUPLICATE",
-        reason: "Row was already processed in a previous import",
-        data,
-      };
+    const processedMatches = processedRowsByKey.get(data.rowKey) || [];
+    if (processedMatches.length) {
+      const strictMatch = processedMatches.find(
+        (stored) => strictRowIdentityFromStored(stored) === strictIdentity,
+      );
+      if (strictMatch) {
+        return {
+          rowNumber: row.rowNumber,
+          classification: "DUPLICATE",
+          reason: `Row was already processed in import ${strictMatch.importId}`,
+          data,
+        };
+      }
     }
 
     const matchKey = `${data.productKey}|${data.batchNumberNormalized}|${data.expiryDateKey}`;
@@ -807,6 +847,30 @@ const runCommit = async (req, res, { legacy = false } = {}) => {
       }
     });
   } catch (error) {
+    if (error?.code === 11000 && String(error?.message || "").includes("importId")) {
+      const existing = await ImportHistory.findOne({ importId }).lean();
+      if (existing?.status === "completed") {
+        return res.json({
+          success: true,
+          message: "This import confirmation was already processed.",
+          importId,
+          summary: existing.summary || {
+            added: 0,
+            updated: 0,
+            duplicate: 0,
+            invalid: 0,
+            processed: 0,
+            total: existing.totalRows || 0,
+          },
+        });
+      }
+      return res.status(409).json({
+        success: false,
+        message: "Import request is already in progress. Please wait and refresh.",
+        importId,
+      });
+    }
+
     if (importHistoryCreated) {
       await ImportHistory.updateOne(
         { importId },
