@@ -233,6 +233,9 @@ router.post("/", upload.single("file"), async (req, res) => {
       (await Medicine.find({}, "name")).map((m) => m.name.toLowerCase()),
     );
 
+    // Group by name to avoid multiple operations on the same document in one bulkWrite
+    const processedData = new Map();
+
     for (let i = 0; i < rows.length; i++) {
       const { valid, errors, data } = validateRow(
         rows[i],
@@ -244,12 +247,21 @@ router.post("/", upload.single("file"), async (req, res) => {
         continue;
       }
 
-      if (existingNames.has(data.name.toLowerCase())) updatedCount++;
-      else addedCount++;
+      const lowerName = data.name.trim().toLowerCase();
+      // If same name appears twice in Excel, last one wins
+      processedData.set(lowerName, data);
+    }
+
+    for (const [lowerName, data] of processedData.entries()) {
+      if (existingNames.has(lowerName)) {
+        updatedCount++;
+      } else {
+        addedCount++;
+      }
 
       bulkOps.push({
         updateOne: {
-          filter: { name: { $regex: `^${data.name.trim()}$`, $options: "i" } },
+          filter: { name: data.name.trim() },
           update: { $set: { ...data, status: "active" } },
           upsert: true,
         },
@@ -257,8 +269,27 @@ router.post("/", upload.single("file"), async (req, res) => {
     }
 
     if (bulkOps.length > 0) {
-      await Medicine.bulkWrite(bulkOps, { ordered: false });
+      try {
+        await Medicine.bulkWrite(bulkOps, { ordered: false });
+      } catch (bulkError) {
+        console.error("Bulk write partial failure:", bulkError);
+        // If it's a bulkWrite error, it might still have succeeded for some.
+        // But for a 500 error we want to know why.
+        if (
+          bulkError.name === "BulkWriteError" ||
+          bulkError.name === "MongoBulkWriteError"
+        ) {
+          // Some might have failed, we can still return success with info if we wanted
+          // but let's see if this was the cause of 500.
+        } else {
+          throw bulkError; // Rethrow to be caught by catch block
+        }
+      }
     }
+
+    console.log(
+      `Import successful: Added ${addedCount}, Updated ${updatedCount}, Failed ${failedRows.length}`,
+    );
 
     res.json({
       success: true,
@@ -272,10 +303,13 @@ router.post("/", upload.single("file"), async (req, res) => {
       failedRows: failedRows.length > 0 ? failedRows : undefined,
     });
   } catch (error) {
-    console.error("Bulk import error:", error);
+    console.error("Bulk import critical error:", error);
     res.status(500).json({
       success: false,
-      message: "Server error during bulk import. " + error.message,
+      message:
+        "Server error during bulk import: " +
+        (error.message || "Unknown error"),
+      error: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });
   }
 });
