@@ -24,7 +24,6 @@ import AppIcon from "../components/common/AppIcon";
 import "./ImportPage.css";
 
 const TEMPLATE_HEADERS = [
-  "#",
   "Product Name",
   "Quantity",
   "Batch Number",
@@ -33,9 +32,9 @@ const TEMPLATE_HEADERS = [
   "Selling Price (KES)",
 ];
 const SAMPLE_DATA = [
-  [1, "Paracetamol 500mg", 100, "BT2026001", "31/Dec/2026", 40, ""],
-  [2, "Amoxicillin 250mg", 50, "BT2026002", "30/Jun/2026", 95, ""],
-  [3, "Ibuprofen 400mg", 75, "BT2026003", "15/Sep/2025", 68, ""],
+  ["Paracetamol 500mg", 100, "BT2026001", "31/Dec/2026", 40, 56],
+  ["Amoxicillin 250mg", 50, "BT2026002", "30/Jun/2026", 95, 133],
+  ["Ibuprofen 400mg", 75, "BT2026003", "15/Sep/2025", 68, 95],
 ];
 
 const HEADER_MAP = {
