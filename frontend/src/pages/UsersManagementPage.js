@@ -22,10 +22,8 @@ import {
   faCircleXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { SkeletonTable } from "../components/common/SkeletonLoaders";
-import { useAuth } from "../context/AuthContext";
 
 const UsersManagementPage = () => {
-  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -422,8 +420,8 @@ const UsersManagementPage = () => {
                       onClick={() =>
                         handleToggleUserStatus(user._id, user.status)
                       }
-                      disabled={actionLoading[`toggle_${user._id}`] || (user.isMainAdmin && !currentUser?.isMainAdmin)}
-                      title={user.isMainAdmin && !currentUser?.isMainAdmin ? "Cannot modify Main Admin" : `Click to ${user.status === "active" ? "deactivate" : "activate"}`}
+                      disabled={actionLoading[`toggle_${user._id}`]}
+                      title={`Click to ${user.status === "active" ? "deactivate" : "activate"}`}
                     >
                       {actionLoading[`toggle_${user._id}`] ? (
                         <span
@@ -436,7 +434,7 @@ const UsersManagementPage = () => {
                             user.status === "active" ? faToggleOn : faToggleOff
                           }
                           className={
-                            (user.isMainAdmin && !currentUser?.isMainAdmin) ? "disabled" : (user.status === "active" ? "active" : "inactive")
+                            user.status === "active" ? "active" : "inactive"
                           }
                         />
                       )}
@@ -488,22 +486,20 @@ const UsersManagementPage = () => {
                   <td data-label="Actions">
                     <div className="action-buttons">
                       <button
-                        className={`btn btn-sm btn-secondary${(user.isMainAdmin && !currentUser?.isMainAdmin) ? " disabled" : ""}`}
-                        onClick={() => !(user.isMainAdmin && !currentUser?.isMainAdmin) && openEditModal(user)}
-                        title={(user.isMainAdmin && !currentUser?.isMainAdmin) ? "Cannot edit Main Admin" : "Edit user"}
-                        disabled={user.isMainAdmin && !currentUser?.isMainAdmin}
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => openEditModal(user)}
+                        title="Edit user"
                       >
                         <AppIcon icon={faEdit} />
                       </button>
                       <button
-                        className={`btn btn-sm btn-secondary${(user.isMainAdmin && !currentUser?.isMainAdmin) ? " disabled" : ""}`}
-                        onClick={() => !(user.isMainAdmin && !currentUser?.isMainAdmin) && openResetPasswordModal(user)}
-                        title={(user.isMainAdmin && !currentUser?.isMainAdmin) ? "Cannot reset Main Admin password" : "Reset password"}
-                        disabled={user.isMainAdmin && !currentUser?.isMainAdmin}
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => openResetPasswordModal(user)}
+                        title="Reset password"
                       >
                         <AppIcon icon={faKey} />
                       </button>
-                      {(!user.isMainAdmin) && (
+                      {user.username !== "admin" && (
                         <button
                           className="btn btn-sm btn-danger"
                           onClick={() => openDeleteModal(user)}
@@ -578,8 +574,8 @@ const UsersManagementPage = () => {
                         onClick={() =>
                           handleToggleUserStatus(user._id, user.status)
                         }
-                        disabled={actionLoading[`toggle_${user._id}`] || (user.isMainAdmin && !currentUser?.isMainAdmin)}
-                        title={user.isMainAdmin && !currentUser?.isMainAdmin ? "Cannot modify Main Admin" : `Click to ${user.status === "active" ? "deactivate" : "activate"}`}
+                        disabled={actionLoading[`toggle_${user._id}`]}
+                        title={`Click to ${user.status === "active" ? "deactivate" : "activate"}`}
                       >
                         {actionLoading[`toggle_${user._id}`] ? (
                           <span
@@ -594,7 +590,7 @@ const UsersManagementPage = () => {
                                 : faToggleOff
                             }
                             className={
-                              (user.isMainAdmin && !currentUser?.isMainAdmin) ? "disabled" : (user.status === "active" ? "active" : "inactive")
+                              user.status === "active" ? "active" : "inactive"
                             }
                           />
                         )}
@@ -656,22 +652,20 @@ const UsersManagementPage = () => {
 
                     <div className="user-mobile-actions">
                       <button
-                        className={`btn btn-sm btn-secondary${(user.isMainAdmin && !currentUser?.isMainAdmin) ? " disabled" : ""}`}
-                        onClick={() => !(user.isMainAdmin && !currentUser?.isMainAdmin) && openEditModal(user)}
-                        title={(user.isMainAdmin && !currentUser?.isMainAdmin) ? "Cannot edit Main Admin" : "Edit user"}
-                        disabled={user.isMainAdmin && !currentUser?.isMainAdmin}
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => openEditModal(user)}
+                        title="Edit user"
                       >
                         <AppIcon icon={faEdit} /> Edit
                       </button>
                       <button
-                        className={`btn btn-sm btn-secondary${(user.isMainAdmin && !currentUser?.isMainAdmin) ? " disabled" : ""}`}
-                        onClick={() => !(user.isMainAdmin && !currentUser?.isMainAdmin) && openResetPasswordModal(user)}
-                        title={(user.isMainAdmin && !currentUser?.isMainAdmin) ? "Cannot reset Main Admin password" : "Reset password"}
-                        disabled={user.isMainAdmin && !currentUser?.isMainAdmin}
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => openResetPasswordModal(user)}
+                        title="Reset password"
                       >
                         <AppIcon icon={faKey} /> Reset
                       </button>
-                      {(!user.isMainAdmin) && (
+                      {user.username !== "admin" && (
                         <button
                           className="btn btn-sm btn-danger"
                           onClick={() => openDeleteModal(user)}

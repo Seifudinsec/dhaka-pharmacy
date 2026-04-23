@@ -76,17 +76,6 @@ router.post('/', auditLog('USER_CREATED', 'User'), async (req, res) => {
 // PUT /api/users/:id
 router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
   try {
-    const targetUser = await User.findById(req.params.id);
-    if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
-
-    // Rule: Cannot alter the main admin's details unless you ARE the main admin
-    if (targetUser.isMainAdmin && !req.user.isMainAdmin) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Access denied. You do not have permission to alter the Main Admin account.' 
-      });
-    }
-
     const { username, role, notificationPreferences } = req.body;
     const updates = {};
 
@@ -128,17 +117,6 @@ router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
 // POST /api/users/:id/reset-password
 router.post('/:id/reset-password', auditLog('USER_PASSWORD_RESET', 'User'), async (req, res) => {
   try {
-    const targetUser = await User.findById(req.params.id);
-    if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
-
-    // Rule: Cannot reset the main admin's password unless you ARE the main admin
-    if (targetUser.isMainAdmin && !req.user.isMainAdmin) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Access denied. You do not have permission to reset the Main Admin password.' 
-      });
-    }
-
     const { newPassword, confirmPassword } = req.body;
     
     if (!newPassword || String(newPassword).length < 6) {
@@ -203,17 +181,6 @@ router.post('/verify-password', async (req, res) => {
 // PUT /api/users/:id/toggle-status
 router.put('/:id/toggle-status', async (req, res) => {
   try {
-    const targetUser = await User.findById(req.params.id);
-    if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
-
-    // Rule: Cannot toggle the main admin's status unless you ARE the main admin
-    if (targetUser.isMainAdmin && !req.user.isMainAdmin) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Access denied. You do not have permission to modify the Main Admin status.' 
-      });
-    }
-
     const { status } = req.body;
     
     if (!['active', 'inactive'].includes(status)) {
@@ -267,8 +234,8 @@ router.delete('/:id', async (req, res) => {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
 
-    if (user.isMainAdmin) {
-      return res.status(403).json({ success: false, message: 'The primary Main Admin account cannot be deleted.' });
+    if (user.username === 'admin') {
+      return res.status(400).json({ success: false, message: 'The primary admin account cannot be deleted.' });
     }
 
     if (user.role === 'admin') {
