@@ -43,7 +43,7 @@ router.post('/login', async (req, res) => {
       success: true,
       message: 'Login successful',
       token,
-      user: { id: user._id, username: user.username, role: normalizedRole },
+      user: { id: user._id, username: user.username, role: normalizedRole, isMainAdmin: user.isMainAdmin },
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -88,7 +88,7 @@ router.post('/register', async (req, res) => {
       success: true,
       message: 'User registered successfully',
       token,
-      user: { id: user._id, username: user.username, role: user.role },
+      user: { id: user._id, username: user.username, role: user.role, isMainAdmin: user.isMainAdmin },
     });
   } catch (error) {
     console.error('Register error:', error);

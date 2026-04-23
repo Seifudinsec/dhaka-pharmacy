@@ -21,6 +21,10 @@ const userSchema = new mongoose.Schema({
     enum: ['admin', 'pharmacist'],
     default: 'pharmacist',
   },
+  isMainAdmin: {
+    type: Boolean,
+    default: false,
+  },
   status: {
     type: String,
     enum: ['active', 'inactive'],
