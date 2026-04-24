@@ -1,5 +1,4 @@
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 
 const protect = async (req, res, next) => {
@@ -25,7 +24,7 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid token.' });
     }
 
-    const user = await User.findById(decoded.id).select('+password');
+    const user = await User.findById(decoded.id).select('-password');
     if (!user) {
       return res.status(401).json({ success: false, message: 'User no longer exists.' });
     }
@@ -44,22 +43,22 @@ const protect = async (req, res, next) => {
     user.lastActive = new Date();
     await user.save();
 
-    // Dynamically identify Main Admin via the fixed password rule
-    let isMainAdmin = false;
-    if (user.role === 'admin' && user.password) {
-      isMainAdmin = await bcrypt.compare('123', user.password);
-    }
-    
-    // Remove password before attaching to req
-    user.password = undefined;
     req.user = user;
-    req.user.isMainAdmin = isMainAdmin;
-
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
     res.status(500).json({ success: false, message: 'Authentication error.' });
   }
+};
+
+const adminOnly = (req, res, next) => {
+  if (req.user.role !== 'admin' && req.user.role !== 'main_admin') {
+    return res.status(403).json({ success: false, message: 'Access denied. Admins only.' });
+  }
+  next();
+};
+
+module.exports = { protect, adminOnly };
 };
 
 const adminOnly = (req, res, next) => {

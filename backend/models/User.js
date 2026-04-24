@@ -18,7 +18,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'pharmacist'],
+    enum: ['main_admin', 'admin', 'pharmacist'],
     default: 'pharmacist',
   },
   status: {
@@ -38,6 +38,11 @@ const userSchema = new mongoose.Schema({
     lowStock: { type: Boolean, default: true },
     expiry: { type: Boolean, default: true },
     dailySales: { type: Boolean, default: false },
+  },
+  isMainAdmin: {
+    type: Boolean,
+    default: false,
+    select: false,
   },
 }, {
   timestamps: true,

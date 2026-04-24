@@ -159,7 +159,7 @@ const UsersManagementPage = () => {
     } catch (error) {
       toast.error(
         error.response?.data?.message ||
-          "Verification failed. Please check your password.",
+        "Verification failed. Please check your password.",
       );
     } finally {
       setVerifying(false);
@@ -196,7 +196,7 @@ const UsersManagementPage = () => {
     } catch (error) {
       toast.error(
         error.response?.data?.message ||
-          "Verification failed. Please check your password.",
+        "Verification failed. Please check your password.",
       );
     } finally {
       setVerifying(false);
@@ -400,13 +400,13 @@ const UsersManagementPage = () => {
                       </div>
                       <div>
                         <div className="user-name">{user.username}</div>
-                        <div className="user-role-badge">{user.role}</div>
+                        <div className="user-role-badge">{user.role === 'main_admin' ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}</div>
                       </div>
                     </div>
                   </td>
                   <td data-label="Role">
-                    <span className={`role-badge ${user.role === 'Main Admin' ? 'admin' : user.role === 'Admin' ? 'admin' : 'pharmacist'}`}>
-                      {user.role}
+                    <span className={`role-badge ${user.role === 'main_admin' ? 'admin' : user.role === 'admin' ? 'admin' : 'pharmacist'}`}>
+                      {user.role === 'main_admin' ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}
                     </span>
                   </td>
                   <td data-label="Status">
@@ -539,7 +539,7 @@ const UsersManagementPage = () => {
                         className="user-role-badge"
                         style={{ display: "inline-block" }}
                       >
-                        {user.role}
+                        {user.role === 'main_admin' ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}
                       </div>
                     </div>
                   </div>
@@ -550,8 +550,8 @@ const UsersManagementPage = () => {
                   <div className="user-mobile-card-body">
                     <div className="user-mobile-row">
                       <span className="user-mobile-label">Role</span>
-                      <span className={`role-badge ${user.role === 'Main Admin' ? 'admin' : user.role === 'Admin' ? 'admin' : 'pharmacist'}`}>
-                        {user.role}
+                      <span className={`role-badge ${user.role === 'main_admin' ? 'admin' : user.role === 'admin' ? 'admin' : 'pharmacist'}`}>
+                        {user.role === 'main_admin' ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}
                       </span>
                     </div>
 
@@ -1340,7 +1340,7 @@ const UsersManagementPage = () => {
                     {resetData.newPassword &&
                       resetData.confirmNewPassword &&
                       resetData.newPassword !==
-                        resetData.confirmNewPassword && (
+                      resetData.confirmNewPassword && (
                         <p
                           style={{
                             color: "var(--red-600)",

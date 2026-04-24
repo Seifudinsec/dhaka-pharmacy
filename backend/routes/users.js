@@ -10,30 +10,12 @@ router.use(protect, adminOnly);
 // GET /api/users
 router.get('/', async (req, res) => {
   try {
-    // Fetch all users with password to perform the Main Admin check
-    const users = await User.find({}).select('+password').sort({ createdAt: -1 });
-    
-    const processedUsers = await Promise.all(users.map(async (u) => {
-      let isMainAdmin = false;
-      if (u.role === 'admin' && u.password) {
-        isMainAdmin = await bcrypt.compare('123', u.password);
-      }
-      const userObj = u.toObject();
-      delete userObj.password;
-      
-      // Inject explicit role labels required by frontend
-      if (isMainAdmin) {
-        userObj.role = 'Main Admin';
-      } else if (u.role === 'admin') {
-        userObj.role = 'Admin';
-      } else {
-        userObj.role = 'Pharmacist';
-      }
-      
-      return userObj;
-    }));
-    
-    res.json({ success: true, data: processedUsers });
+    const query = {};
+    if (req.user.role === 'admin') {
+      query.role = { $ne: 'main_admin' };
+    }
+    const users = await User.find(query).select('-password').sort({ createdAt: -1 });
+    res.json({ success: true, data: users });
   } catch (error) {
     console.error('List users error:', error);
     res.status(500).json({ success: false, message: 'Failed to load users.' });
@@ -76,8 +58,11 @@ router.post('/', auditLog('USER_CREATED', 'User'), async (req, res) => {
     if (String(password).length < 6) {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
     }
-    if (!['admin', 'pharmacist'].includes(role)) {
+    if (!['main_admin', 'admin', 'pharmacist'].includes(role)) {
       return res.status(400).json({ success: false, message: 'Invalid role provided.' });
+    }
+    if (req.user.role === 'admin' && role !== 'pharmacist') {
+      return res.status(403).json({ success: false, message: 'Admins can only create pharmacists.' });
     }
 
     const exists = await User.findOne({ username: normalizedUsername });
@@ -98,16 +83,16 @@ router.post('/', auditLog('USER_CREATED', 'User'), async (req, res) => {
 // PUT /api/users/:id
 router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
   try {
-    const targetUser = await User.findById(req.params.id).select('+password');
+    const targetUser = await User.findById(req.params.id);
     if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
-    
-    let targetIsMainAdmin = false;
-    if (targetUser.role === 'admin' && targetUser.password) {
-      targetIsMainAdmin = await bcrypt.compare('123', targetUser.password);
-    }
 
-    if (targetIsMainAdmin && !req.user.isMainAdmin) {
-      return res.status(403).json({ success: false, message: 'Modification of the Main Admin account is strictly prohibited for other admins.' });
+    if (req.user.role === 'admin') {
+      if (targetUser.role === 'main_admin') {
+        return res.status(403).json({ success: false, message: 'Admins cannot modify the Main Admin.' });
+      }
+      if (targetUser.role === 'admin' && String(targetUser._id) !== String(req.user._id)) {
+        return res.status(403).json({ success: false, message: 'Admins cannot modify other admins.' });
+      }
     }
 
     const { username, role, notificationPreferences } = req.body;
@@ -129,8 +114,11 @@ router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
     }
 
     if (role !== undefined) {
-      if (!['admin', 'pharmacist'].includes(role)) {
+      if (!['main_admin', 'admin', 'pharmacist'].includes(role)) {
         return res.status(400).json({ success: false, message: 'Invalid role provided.' });
+      }
+      if (req.user.role === 'admin' && role !== 'pharmacist' && String(targetUser._id) !== String(req.user._id)) {
+        return res.status(403).json({ success: false, message: 'Admins cannot elevate users.' });
       }
       updates.role = role;
     }
@@ -150,7 +138,7 @@ router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
 // POST /api/users/:id/reset-password
 router.post('/:id/reset-password', auditLog('USER_PASSWORD_RESET', 'User'), async (req, res) => {
   try {
-    const targetUser = await User.findById(req.params.id).select('+password');
+    const targetUser = await User.findById(req.params.id);
     if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
 
     const { newPassword, confirmPassword } = req.body;
@@ -171,13 +159,13 @@ router.post('/:id/reset-password', auditLog('USER_PASSWORD_RESET', 'User'), asyn
       return res.status(401).json({ success: false, message: 'Confirmation password incorrect. Authorization failed.' });
     }
 
-    let targetIsMainAdmin = false;
-    if (targetUser.role === 'admin' && targetUser.password) {
-      targetIsMainAdmin = await bcrypt.compare('123', targetUser.password);
-    }
-
-    if (targetIsMainAdmin && !req.user.isMainAdmin) {
-      return res.status(403).json({ success: false, message: 'Password reset for the Main Admin account is strictly prohibited for other admins.' });
+    if (req.user.role === 'admin') {
+      if (targetUser.role === 'main_admin') {
+        return res.status(403).json({ success: false, message: 'Admins cannot modify the Main Admin.' });
+      }
+      if (targetUser.role === 'admin' && String(targetUser._id) !== String(req.user._id)) {
+        return res.status(403).json({ success: false, message: 'Admins cannot modify other admins.' });
+      }
     }
 
     const salt = await bcrypt.genSalt(12);
@@ -225,16 +213,15 @@ router.post('/verify-password', async (req, res) => {
 // PUT /api/users/:id/toggle-status
 router.put('/:id/toggle-status', async (req, res) => {
   try {
-    const targetUser = await User.findById(req.params.id).select('+password');
+    const targetUser = await User.findById(req.params.id);
     if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
-    
-    let targetIsMainAdmin = false;
-    if (targetUser.role === 'admin' && targetUser.password) {
-      targetIsMainAdmin = await bcrypt.compare('123', targetUser.password);
-    }
-
-    if (targetIsMainAdmin && !req.user.isMainAdmin) {
-      return res.status(403).json({ success: false, message: 'Modification of the Main Admin account is strictly prohibited for other admins.' });
+    if (req.user.role === 'admin') {
+      if (targetUser.role === 'main_admin') {
+        return res.status(403).json({ success: false, message: 'Admins cannot modify the Main Admin.' });
+      }
+      if (targetUser.role === 'admin' && String(targetUser._id) !== String(req.user._id)) {
+        return res.status(403).json({ success: false, message: 'Admins cannot modify other admins.' });
+      }
     }
 
     const { status } = req.body;
@@ -269,17 +256,17 @@ router.put('/:id/toggle-status', async (req, res) => {
 // DELETE /api/users/:id
 router.delete('/:id', async (req, res) => {
   try {
-    const targetUser = await User.findById(req.params.id).select('+password');
+    const targetUser = await User.findById(req.params.id);
     if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
 
-    let targetIsMainAdmin = false;
-    if (targetUser.role === 'admin' && targetUser.password) {
-      targetIsMainAdmin = await bcrypt.compare('123', targetUser.password);
+    if (targetUser.role === 'main_admin') {
+      return res.status(403).json({ success: false, message: 'The Main Admin account cannot be deleted.' });
     }
 
-    // Exactly one main admin rule: NO ONE can delete the Main Admin, not even themselves!
-    if (targetIsMainAdmin) {
-      return res.status(403).json({ success: false, message: 'The Main Admin account cannot be deleted by anyone to ensure system integrity.' });
+    if (req.user.role === 'admin') {
+      if (targetUser.role === 'admin' && String(targetUser._id) !== String(req.user._id)) {
+        return res.status(403).json({ success: false, message: 'Admins cannot delete other admins.' });
+      }
     }
 
     const { adminPassword } = req.body || {};
