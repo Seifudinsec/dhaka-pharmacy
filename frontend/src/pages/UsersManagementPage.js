@@ -400,13 +400,13 @@ const UsersManagementPage = () => {
                       </div>
                       <div>
                         <div className="user-name">{user.username}</div>
-                        <div className="user-role-badge">{user.isMainAdmin ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}</div>
+                        <div className="user-role-badge">{user.role}</div>
                       </div>
                     </div>
                   </td>
                   <td data-label="Role">
-                    <span className={`role-badge ${user.role}`}>
-                      {user.isMainAdmin ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}
+                    <span className={`role-badge ${user.role === 'Main Admin' ? 'admin' : user.role === 'Admin' ? 'admin' : 'pharmacist'}`}>
+                      {user.role}
                     </span>
                   </td>
                   <td data-label="Status">
@@ -539,7 +539,7 @@ const UsersManagementPage = () => {
                         className="user-role-badge"
                         style={{ display: "inline-block" }}
                       >
-                        {user.isMainAdmin ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}
+                        {user.role}
                       </div>
                     </div>
                   </div>
@@ -550,8 +550,8 @@ const UsersManagementPage = () => {
                   <div className="user-mobile-card-body">
                     <div className="user-mobile-row">
                       <span className="user-mobile-label">Role</span>
-                      <span className={`role-badge ${user.role}`}>
-                        {user.isMainAdmin ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}
+                      <span className={`role-badge ${user.role === 'Main Admin' ? 'admin' : user.role === 'Admin' ? 'admin' : 'pharmacist'}`}>
+                        {user.role}
                       </span>
                     </div>
 
