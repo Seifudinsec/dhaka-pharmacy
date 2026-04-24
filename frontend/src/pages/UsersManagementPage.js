@@ -400,18 +400,13 @@ const UsersManagementPage = () => {
                       </div>
                       <div>
                         <div className="user-name">{user.username}</div>
-                        <div className="user-role-badge">{user.role}</div>
+                        <div className="user-role-badge">{user.role === 'admin' ? 'Admin' : 'Pharmacist'}</div>
                       </div>
                     </div>
                   </td>
                   <td data-label="Role">
                     <span className={`role-badge ${user.role}`}>
-                      <AppIcon
-                        icon={
-                          user.role === "admin" ? faUserShield : faUserClock
-                        }
-                      />
-                      {user.role}
+                      {user.role === 'admin' ? 'Admin' : 'Pharmacist'}
                     </span>
                   </td>
                   <td data-label="Status">
@@ -499,23 +494,21 @@ const UsersManagementPage = () => {
                       >
                         <AppIcon icon={faKey} />
                       </button>
-                      {user.username !== "admin" && (
-                        <button
-                          className="btn btn-sm btn-danger"
-                          onClick={() => openDeleteModal(user)}
-                          disabled={actionLoading[`delete_${user._id}`]}
-                          title="Delete user"
-                        >
-                          {actionLoading[`delete_${user._id}`] ? (
-                            <span
-                              className="spinner spinner-sm"
-                              aria-hidden="true"
-                            />
-                          ) : (
-                            <AppIcon icon={faTrash} />
-                          )}
-                        </button>
-                      )}
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => openDeleteModal(user)}
+                        disabled={actionLoading[`delete_${user._id}`]}
+                        title="Delete user"
+                      >
+                        {actionLoading[`delete_${user._id}`] ? (
+                          <span
+                            className="spinner spinner-sm"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <AppIcon icon={faTrash} />
+                        )}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -546,7 +539,7 @@ const UsersManagementPage = () => {
                         className="user-role-badge"
                         style={{ display: "inline-block" }}
                       >
-                        {user.role}
+                        {user.role === 'admin' ? 'Admin' : 'Pharmacist'}
                       </div>
                     </div>
                   </div>
@@ -558,12 +551,7 @@ const UsersManagementPage = () => {
                     <div className="user-mobile-row">
                       <span className="user-mobile-label">Role</span>
                       <span className={`role-badge ${user.role}`}>
-                        <AppIcon
-                          icon={
-                            user.role === "admin" ? faUserShield : faUserClock
-                          }
-                        />
-                        {user.role}
+                        {user.role === 'admin' ? 'Admin' : 'Pharmacist'}
                       </span>
                     </div>
 
@@ -665,24 +653,22 @@ const UsersManagementPage = () => {
                       >
                         <AppIcon icon={faKey} /> Reset
                       </button>
-                      {user.username !== "admin" && (
-                        <button
-                          className="btn btn-sm btn-danger"
-                          onClick={() => openDeleteModal(user)}
-                          disabled={actionLoading[`delete_${user._id}`]}
-                          title="Delete user"
-                        >
-                          {actionLoading[`delete_${user._id}`] ? (
-                            <span
-                              className="spinner spinner-sm"
-                              aria-hidden="true"
-                            />
-                          ) : (
-                            <AppIcon icon={faTrash} />
-                          )}{" "}
-                          Delete
-                        </button>
-                      )}
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => openDeleteModal(user)}
+                        disabled={actionLoading[`delete_${user._id}`]}
+                        title="Delete user"
+                      >
+                        {actionLoading[`delete_${user._id}`] ? (
+                          <span
+                            className="spinner spinner-sm"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <AppIcon icon={faTrash} />
+                        )}{" "}
+                        Delete
+                      </button>
                     </div>
                   </div>
                 )}

@@ -142,7 +142,7 @@ const Sidebar = ({ open, onClose }) => {
             </div>
             <div className="user-details">
               <strong>{user?.username}</strong>
-              <span>{user?.role}</span>
+              <span>{user?.role === 'admin' ? 'Admin' : 'Pharmacist'}</span>
             </div>
           </div>
           {user?.role === "admin" && (

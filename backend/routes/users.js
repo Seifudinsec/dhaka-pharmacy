@@ -10,7 +10,12 @@ router.use(protect, adminOnly);
 // GET /api/users
 router.get('/', async (req, res) => {
   try {
-    const users = await User.find().select('-password').sort({ createdAt: -1 });
+    const query = {};
+    // Hide Main Admin from everyone except the Main Admin themselves
+    if (!req.user.isMainAdmin) {
+      query.isMainAdmin = { $ne: true };
+    }
+    const users = await User.find(query).select('-password').sort({ createdAt: -1 });
     res.json({ success: true, data: users });
   } catch (error) {
     console.error('List users error:', error);
@@ -76,6 +81,12 @@ router.post('/', auditLog('USER_CREATED', 'User'), async (req, res) => {
 // PUT /api/users/:id
 router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
   try {
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (targetUser.isMainAdmin) {
+      return res.status(403).json({ success: false, message: 'Modification of the Main Admin account is strictly prohibited.' });
+    }
+
     const { username, role, notificationPreferences } = req.body;
     const updates = {};
 
@@ -84,13 +95,13 @@ router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
       if (normalizedUsername.length < 3) {
         return res.status(400).json({ success: false, message: 'Username must be at least 3 characters.' });
       }
-      
+
       // Check if username is already taken by another user
       const existingUser = await User.findOne({ username: normalizedUsername, _id: { $ne: req.params.id } });
       if (existingUser) {
         return res.status(409).json({ success: false, message: 'Username already taken.' });
       }
-      
+
       updates.username = normalizedUsername;
     }
 
@@ -106,7 +117,6 @@ router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
     }
 
     const user = await User.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true }).select('-password');
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
     res.json({ success: true, message: 'User updated successfully.', data: user });
   } catch (error) {
     console.error('Update user error:', error);
@@ -117,8 +127,11 @@ router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
 // POST /api/users/:id/reset-password
 router.post('/:id/reset-password', auditLog('USER_PASSWORD_RESET', 'User'), async (req, res) => {
   try {
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
+
     const { newPassword, confirmPassword } = req.body;
-    
+
     if (!newPassword || String(newPassword).length < 6) {
       return res.status(400).json({ success: false, message: 'New password must be at least 6 characters.' });
     }
@@ -130,24 +143,27 @@ router.post('/:id/reset-password', auditLog('USER_PASSWORD_RESET', 'User'), asyn
     // Verify the password of the admin who is performing the reset
     const admin = await User.findById(req.user._id).select('+password');
     const isMatch = await bcrypt.compare(confirmPassword, admin.password);
-    
+
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Confirmation password incorrect. Authorization failed.' });
     }
 
+    if (targetUser.isMainAdmin) {
+      return res.status(403).json({ success: false, message: 'Password reset for the Main Admin account is strictly prohibited.' });
+    }
+
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(String(newPassword), salt);
-    
+
     const user = await User.findByIdAndUpdate(
-      req.params.id, 
-      { 
+      req.params.id,
+      {
         password: hashedPassword,
         tokenVersion: (await User.findById(req.params.id).select('tokenVersion'))?.tokenVersion + 1 || 1
-      }, 
+      },
       { new: true, runValidators: true }
     ).select('-password');
-    
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+
     res.json({ success: true, message: 'Password reset successfully.' });
   } catch (error) {
     console.error('Reset password error:', error);
@@ -181,16 +197,21 @@ router.post('/verify-password', async (req, res) => {
 // PUT /api/users/:id/toggle-status
 router.put('/:id/toggle-status', async (req, res) => {
   try {
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (targetUser.isMainAdmin) {
+      return res.status(403).json({ success: false, message: 'Modification of the Main Admin account is strictly prohibited.' });
+    }
+
     const { status } = req.body;
-    
+
     if (!['active', 'inactive'].includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status provided.' });
     }
 
     // Prevent deactivating the last admin
     if (status === 'inactive') {
-      const user = await User.findById(req.params.id);
-      if (user.role === 'admin') {
+      if (targetUser.role === 'admin') {
         const adminCount = await User.countDocuments({ role: 'admin', status: 'active' });
         if (adminCount <= 1) {
           return res.status(400).json({ success: false, message: 'Cannot deactivate the last admin user.' });
@@ -199,12 +220,11 @@ router.put('/:id/toggle-status', async (req, res) => {
     }
 
     const updatedUser = await User.findByIdAndUpdate(
-      req.params.id, 
-      { status, lastActive: new Date() }, 
+      req.params.id,
+      { status, lastActive: new Date() },
       { new: true, runValidators: true }
     ).select('-password');
-    
-    if (!updatedUser) return res.status(404).json({ success: false, message: 'User not found.' });
+
     res.json({ success: true, message: `User ${status} successfully.`, data: updatedUser });
   } catch (error) {
     console.error('Toggle status error:', error);
@@ -215,8 +235,14 @@ router.put('/:id/toggle-status', async (req, res) => {
 // DELETE /api/users/:id
 router.delete('/:id', async (req, res) => {
   try {
-    const { adminPassword } = req.body || {};
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
 
+    if (targetUser.isMainAdmin) {
+      return res.status(403).json({ success: false, message: 'Modification of the Main Admin account is strictly prohibited.' });
+    }
+
+    const { adminPassword } = req.body || {};
     if (!adminPassword) {
       return res.status(400).json({ success: false, message: 'Admin password is required to delete a user.' });
     }
@@ -231,21 +257,14 @@ router.delete('/:id', async (req, res) => {
       return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
     }
 
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-
-    if (user.username === 'admin') {
-      return res.status(400).json({ success: false, message: 'The primary admin account cannot be deleted.' });
-    }
-
-    if (user.role === 'admin') {
+    if (targetUser.role === 'admin') {
       const adminCount = await User.countDocuments({ role: 'admin' });
       if (adminCount <= 1) {
         return res.status(400).json({ success: false, message: 'Cannot delete the last admin user.' });
       }
     }
 
-    await user.deleteOne();
+    await targetUser.deleteOne();
     res.json({ success: true, message: 'User deleted successfully.' });
   } catch (error) {
     console.error('Delete user error:', error);

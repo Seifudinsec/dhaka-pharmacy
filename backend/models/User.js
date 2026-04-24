@@ -39,6 +39,11 @@ const userSchema = new mongoose.Schema({
     expiry: { type: Boolean, default: true },
     dailySales: { type: Boolean, default: false },
   },
+  isMainAdmin: {
+    type: Boolean,
+    default: false,
+    select: false,
+  },
 }, {
   timestamps: true,
 });
