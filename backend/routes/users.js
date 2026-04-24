@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
     if (!req.user.isMainAdmin) {
       query.isMainAdmin = { $ne: true };
     }
-    const users = await User.find(query).select('-password').sort({ createdAt: -1 });
+    const users = await User.find(query).select('-password +isMainAdmin').sort({ createdAt: -1 });
     res.json({ success: true, data: users });
   } catch (error) {
     console.error('List users error:', error);
