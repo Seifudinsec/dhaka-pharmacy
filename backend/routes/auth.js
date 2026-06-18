@@ -12,6 +12,7 @@ const generateToken = (id, tokenVersion = 0) =>
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
+    console.log(`Login attempt for username: ${username}`);
 
     if (!username || !password) {
       return res.status(400).json({ success: false, message: 'Username and password are required.' });
