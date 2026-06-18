@@ -23,7 +23,8 @@ const seedData = async () => {
   await User.create({
     username: 'admin',
     password: hashedPassword,
-    role: 'admin',
+    role: 'main_admin',
+    isMainAdmin: true,
   });
   console.log('✅ Admin user created: admin / admin123');
 
