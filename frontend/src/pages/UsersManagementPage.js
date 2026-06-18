@@ -24,7 +24,6 @@ import {
 import { SkeletonTable } from "../components/common/SkeletonLoaders";
 
 const UsersManagementPage = () => {
-  const creator = createElement;
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -67,10 +66,6 @@ const UsersManagementPage = () => {
   const [actionLoading, setActionLoading] = useState({});
   const debouncedUsername = useDebounce(formData.username, 400);
 
-  const isMainAdminTarget = selectedUser
-    ? selectedUser.isMainAdmin || selectedUser.role === "main_admin"
-    : false;
-
   useEffect(() => {
     const checkUsername = async () => {
       if (!debouncedUsername || debouncedUsername.trim().length < 3) {
@@ -78,6 +73,7 @@ const UsersManagementPage = () => {
         return;
       }
 
+      // If we are editing, don't check if it's the current username
       if (
         selectedUser &&
         debouncedUsername.toLowerCase() === selectedUser.username.toLowerCase()
@@ -163,7 +159,7 @@ const UsersManagementPage = () => {
     } catch (error) {
       toast.error(
         error.response?.data?.message ||
-          "Verification failed. Please check your password.",
+        "Verification failed. Please check your password.",
       );
     } finally {
       setVerifying(false);
@@ -173,19 +169,11 @@ const UsersManagementPage = () => {
   const handleEditUser = async (e) => {
     e.preventDefault();
     try {
-      const userId = selectedUser?._id;
-      const payload = {
-        username: formData.username,
-        role: isMainAdminTarget ? formData.role : formData.role,
-        notificationPreferences: formData.notificationPreferences,
-        ...(formData.password ? { password: formData.password } : {}),
-      };
-      const { data } = await api.put(`/users/${userId}`, payload);
+      const { data } = await api.put(`/users/${selectedUser._id}`, formData);
       if (data.success) {
         toast.success("User updated successfully");
         setShowEditModal(false);
         setSelectedUser(null);
-        setFormData((p) => ({ ...p, password: "" }));
         fetchUsers();
       }
     } catch (error) {
@@ -208,7 +196,7 @@ const UsersManagementPage = () => {
     } catch (error) {
       toast.error(
         error.response?.data?.message ||
-          "Verification failed. Please check your password.",
+        "Verification failed. Please check your password.",
       );
     } finally {
       setVerifying(false);
@@ -403,127 +391,143 @@ const UsersManagementPage = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((user) => {
-                const locked = user.isMainAdmin || user.role === "main_admin";
-                return (
-                  <tr key={user._id}>
-                    <td data-label="User">
-                      <div className="user-cell">
-                        <div className="user-avatar">
-                          {user.username[0].toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="user-name">{user.username}</div>
-                          <div className="user-role-badge">
-                            {locked ? "Main Admin" : user.role === "admin" ? "Admin" : "Pharmacist"}
-                          </div>
-                        </div>
+              {filteredUsers.map((user) => (
+                <tr key={user._id}>
+                  <td data-label="User">
+                    <div className="user-cell">
+                      <div className="user-avatar">
+                        {user.username[0].toUpperCase()}
                       </div>
-                    </td>
-                    <td data-label="Role">
-                      <span className={`role-badge ${locked ? "admin" : user.role === "admin" ? "admin" : "pharmacist"}`}>
-                        {locked ? "Main Admin" : user.role === "admin" ? "Admin" : "Pharmacist"}
-                      </span>
-                      {locked && (
-                        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--slate-500)" }}>
-                          (Permanent)
-                        </span>
+                      <div>
+                        <div className="user-name">{user.username}</div>
+                        <div className="user-role-badge">{user.role === 'main_admin' ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td data-label="Role">
+                    <span className={`role-badge ${user.role === 'main_admin' ? 'admin' : user.role === 'admin' ? 'admin' : 'pharmacist'}`}>
+                      {user.role === 'main_admin' ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}
+                    </span>
+                  </td>
+                  <td data-label="Status">
+                    <button
+                      className="status-toggle"
+                      onClick={() =>
+                        handleToggleUserStatus(user._id, user.status)
+                      }
+                      disabled={actionLoading[`toggle_${user._id}`]}
+                      title={`Click to ${user.status === "active" ? "deactivate" : "activate"}`}
+                    >
+                      {actionLoading[`toggle_${user._id}`] ? (
+                        <span
+                          className="spinner spinner-sm"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <AppIcon
+                          icon={
+                            user.status === "active" ? faToggleOn : faToggleOff
+                          }
+                          className={
+                            user.status === "active" ? "active" : "inactive"
+                          }
+                        />
                       )}
-                    </td>
-                    <td data-label="Status">
-                      <button
-                        className="status-toggle"
-                        onClick={() => handleToggleUserStatus(user._id, user.status)}
-                        disabled={actionLoading[`toggle_${user._id}`] || locked}
-                        title={locked ? "Main Admin status cannot be changed" : `Click to ${user.status === "active" ? "deactivate" : "activate"}`}
+                      {user.status}
+                    </button>
+                  </td>
+                  <td data-label="Notifications">
+                    <div className="notification-preferences">
+                      <span
+                        title="Low Stock"
+                        className={
+                          user.notificationPreferences.lowStock
+                            ? "enabled"
+                            : "disabled"
+                        }
                       >
-                        {actionLoading[`toggle_${user._id}`] ? (
-                          <span className="spinner spinner-sm" aria-hidden="true" />
-                        ) : (
-                          <AppIcon
-                            icon={user.status === "active" ? faToggleOn : faToggleOff}
-                            className={user.status === "active" ? "active" : "inactive"}
-                          />
-                        )}
-                        {user.status}
+                        Stock
+                      </span>
+                      <span
+                        title="Expiry"
+                        className={
+                          user.notificationPreferences.expiry
+                            ? "enabled"
+                            : "disabled"
+                        }
+                      >
+                        Expiry
+                      </span>
+                      <span
+                        title="Daily Sales"
+                        className={
+                          user.notificationPreferences.dailySales
+                            ? "enabled"
+                            : "disabled"
+                        }
+                      >
+                        Sales
+                      </span>
+                    </div>
+                  </td>
+                  <td data-label="Last Active">
+                    {user.lastActive
+                      ? format(new Date(user.lastActive), "MMM dd, yyyy")
+                      : "Never"}
+                  </td>
+                  <td data-label="Created">
+                    {format(new Date(user.createdAt), "MMM dd, yyyy")}
+                  </td>
+                  <td data-label="Actions">
+                    <div className="action-buttons">
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => openEditModal(user)}
+                        title="Edit user"
+                      >
+                        <AppIcon icon={faEdit} />
                       </button>
-                    </td>
-                    <td data-label="Notifications">
-                      <div className="notification-preferences">
-                        <span
-                          title="Low Stock"
-                          className={user.notificationPreferences.lowStock ? "enabled" : "disabled"}
-                        >
-                          Stock
-                        </span>
-                        <span
-                          title="Expiry"
-                          className={user.notificationPreferences.expiry ? "enabled" : "disabled"}
-                        >
-                          Expiry
-                        </span>
-                        <span
-                          title="Daily Sales"
-                          className={user.notificationPreferences.dailySales ? "enabled" : "disabled"}
-                        >
-                          Sales
-                        </span>
-                      </div>
-                    </td>
-                    <td data-label="Last Active">
-                      {user.lastActive ? format(new Date(user.lastActive), "MMM dd, yyyy") : "Never"}
-                    </td>
-                    <td data-label="Created">
-                      {format(new Date(user.createdAt), "MMM dd, yyyy")}
-                    </td>
-                    <td data-label="Actions">
-                      <div className="action-buttons">
-                        <button
-                          className="btn btn-sm btn-secondary"
-                          onClick={() => openEditModal(user)}
-                          title={locked ? "Main Admin profile can only edit username and password" : "Edit user"}
-                          disabled={locked}
-                        >
-                          <AppIcon icon={faEdit} />
-                        </button>
-                        <button
-                          className="btn btn-sm btn-secondary"
-                          onClick={() => openResetPasswordModal(user)}
-                          title="Reset password"
-                        >
-                          <AppIcon icon={faKey} />
-                        </button>
-                        <button
-                          className="btn btn-sm btn-danger"
-                          onClick={() => openDeleteModal(user)}
-                          disabled={actionLoading[`delete_${user._id}`] || locked}
-                          title={locked ? "Main Admin cannot be deleted" : "Delete user"}
-                        >
-                          {actionLoading[`delete_${user._id}`] ? (
-                            <span className="spinner spinner-sm" aria-hidden="true" />
-                          ) : (
-                            <AppIcon icon={faTrash} />
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => openResetPasswordModal(user)}
+                        title="Reset password"
+                      >
+                        <AppIcon icon={faKey} />
+                      </button>
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => openDeleteModal(user)}
+                        disabled={actionLoading[`delete_${user._id}`]}
+                        title="Delete user"
+                      >
+                        {actionLoading[`delete_${user._id}`] ? (
+                          <span
+                            className="spinner spinner-sm"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <AppIcon icon={faTrash} />
+                        )}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
 
         <div className="users-mobile-list">
           {filteredUsers.map((user) => {
-            const locked = user.isMainAdmin || user.role === "main_admin";
             const isExpanded = expandedUserId === user._id;
             return (
               <div key={user._id} className="user-mobile-card">
                 <button
                   type="button"
                   className="user-mobile-card-header"
-                  onClick={() => setExpandedUserId(isExpanded ? null : user._id)}
+                  onClick={() =>
+                    setExpandedUserId(isExpanded ? null : user._id)
+                  }
                 >
                   <div className="user-cell">
                     <div className="user-avatar">
@@ -535,7 +539,7 @@ const UsersManagementPage = () => {
                         className="user-role-badge"
                         style={{ display: "inline-block" }}
                       >
-                        {locked ? "Main Admin" : user.role === "admin" ? "Admin" : "Pharmacist"}
+                        {user.role === 'main_admin' ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}
                       </div>
                     </div>
                   </div>
@@ -546,8 +550,8 @@ const UsersManagementPage = () => {
                   <div className="user-mobile-card-body">
                     <div className="user-mobile-row">
                       <span className="user-mobile-label">Role</span>
-                      <span className={`role-badge ${locked ? "admin" : user.role === "admin" ? "admin" : "pharmacist"}`}>
-                        {locked ? "Main Admin" : user.role === "admin" ? "Admin" : "Pharmacist"}
+                      <span className={`role-badge ${user.role === 'main_admin' ? 'admin' : user.role === 'admin' ? 'admin' : 'pharmacist'}`}>
+                        {user.role === 'main_admin' ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}
                       </span>
                     </div>
 
@@ -555,16 +559,27 @@ const UsersManagementPage = () => {
                       <span className="user-mobile-label">Status</span>
                       <button
                         className="status-toggle"
-                        onClick={() => handleToggleUserStatus(user._id, user.status)}
-                        disabled={actionLoading[`toggle_${user._id}`] || locked}
-                        title={locked ? "Main Admin status cannot be changed" : `Click to ${user.status === "active" ? "deactivate" : "activate"}`}
+                        onClick={() =>
+                          handleToggleUserStatus(user._id, user.status)
+                        }
+                        disabled={actionLoading[`toggle_${user._id}`]}
+                        title={`Click to ${user.status === "active" ? "deactivate" : "activate"}`}
                       >
                         {actionLoading[`toggle_${user._id}`] ? (
-                          <span className="spinner spinner-sm" aria-hidden="true" />
+                          <span
+                            className="spinner spinner-sm"
+                            aria-hidden="true"
+                          />
                         ) : (
                           <AppIcon
-                            icon={user.status === "active" ? faToggleOn : faToggleOff}
-                            className={user.status === "active" ? "active" : "inactive"}
+                            icon={
+                              user.status === "active"
+                                ? faToggleOn
+                                : faToggleOff
+                            }
+                            className={
+                              user.status === "active" ? "active" : "inactive"
+                            }
                           />
                         )}
                         {user.status}
@@ -576,19 +591,31 @@ const UsersManagementPage = () => {
                       <div className="notification-preferences">
                         <span
                           title="Low Stock"
-                          className={user.notificationPreferences.lowStock ? "enabled" : "disabled"}
+                          className={
+                            user.notificationPreferences.lowStock
+                              ? "enabled"
+                              : "disabled"
+                          }
                         >
                           Stock
                         </span>
                         <span
                           title="Expiry"
-                          className={user.notificationPreferences.expiry ? "enabled" : "disabled"}
+                          className={
+                            user.notificationPreferences.expiry
+                              ? "enabled"
+                              : "disabled"
+                          }
                         >
                           Expiry
                         </span>
                         <span
                           title="Daily Sales"
-                          className={user.notificationPreferences.dailySales ? "enabled" : "disabled"}
+                          className={
+                            user.notificationPreferences.dailySales
+                              ? "enabled"
+                              : "disabled"
+                          }
                         >
                           Sales
                         </span>
@@ -598,7 +625,9 @@ const UsersManagementPage = () => {
                     <div className="user-mobile-row">
                       <span className="user-mobile-label">Last Active</span>
                       <span>
-                        {user.lastActive ? format(new Date(user.lastActive), "MMM dd, yyyy") : "Never"}
+                        {user.lastActive
+                          ? format(new Date(user.lastActive), "MMM dd, yyyy")
+                          : "Never"}
                       </span>
                     </div>
 
@@ -613,8 +642,7 @@ const UsersManagementPage = () => {
                       <button
                         className="btn btn-sm btn-secondary"
                         onClick={() => openEditModal(user)}
-                        title={locked ? "Main Admin profile can only edit username and password" : "Edit user"}
-                        disabled={locked}
+                        title="Edit user"
                       >
                         <AppIcon icon={faEdit} /> Edit
                       </button>
@@ -628,11 +656,14 @@ const UsersManagementPage = () => {
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => openDeleteModal(user)}
-                        disabled={actionLoading[`delete_${user._id}`] || locked}
-                        title={locked ? "Main Admin cannot be deleted" : "Delete user"}
+                        disabled={actionLoading[`delete_${user._id}`]}
+                        title="Delete user"
                       >
                         {actionLoading[`delete_${user._id}`] ? (
-                          <span className="spinner spinner-sm" aria-hidden="true" />
+                          <span
+                            className="spinner spinner-sm"
+                            aria-hidden="true"
+                          />
                         ) : (
                           <AppIcon icon={faTrash} />
                         )}{" "}
@@ -956,9 +987,7 @@ const UsersManagementPage = () => {
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>
-                {isMainAdminTarget ? "Edit Main Admin Profile" : "Edit User"}
-              </h2>
+              <h2>Edit User</h2>
               <button
                 className="modal-close"
                 onClick={() => setShowEditModal(false)}
@@ -967,22 +996,6 @@ const UsersManagementPage = () => {
               </button>
             </div>
             <form onSubmit={handleEditUser} className="modal-body">
-              {isMainAdminTarget && (
-                <div
-                  style={{
-                    padding: "10px 12px",
-                    background: "var(--amber-50)",
-                    border: "1px solid var(--amber-200)",
-                    borderRadius: "6px",
-                    marginBottom: "16px",
-                    fontSize: "13px",
-                    color: "var(--amber-800)",
-                  }}
-                >
-                  Main Admin privileges are permanent. You may only update
-                  username and password here.
-                </div>
-              )}
               <div className="form-group">
                 <label htmlFor="edit-username">Username</label>
                 <input
@@ -1022,90 +1035,72 @@ const UsersManagementPage = () => {
                 )}
               </div>
               <div className="form-group">
-                <label htmlFor="edit-password">
-                  {isMainAdminTarget ? "New Password (optional)" : "New Password"}
-                </label>
-                <input
-                  id="edit-password"
-                  type="password"
-                  value={formData.password}
+                <label htmlFor="edit-role">Role</label>
+                <select
+                  id="edit-role"
+                  value={formData.role}
                   onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
+                    setFormData({ ...formData, role: e.target.value })
                   }
-                  className="form-input"
-                />
+                  className="form-select"
+                >
+                  <option value="pharmacist">Pharmacist</option>
+                  <option value="admin">Admin</option>
+                </select>
               </div>
-              {!isMainAdminTarget && (
-                <div className="form-group">
-                  <label htmlFor="edit-role">Role</label>
-                  <select
-                    id="edit-role"
-                    value={formData.role}
-                    onChange={(e) =>
-                      setFormData({ ...formData, role: e.target.value })
-                    }
-                    className="form-select"
-                  >
-                    <option value="pharmacist">Pharmacist</option>
-                    <option value="admin">Admin</option>
-                  </select>
+              <div className="form-group">
+                <label>Notification Preferences</label>
+                <div className="checkbox-group">
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={formData.notificationPreferences.lowStock}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          notificationPreferences: {
+                            ...formData.notificationPreferences,
+                            lowStock: e.target.checked,
+                          },
+                        })
+                      }
+                    />
+                    Low Stock Alerts
+                  </label>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={formData.notificationPreferences.expiry}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          notificationPreferences: {
+                            ...formData.notificationPreferences,
+                            expiry: e.target.checked,
+                          },
+                        })
+                      }
+                    />
+                    Expiry Alerts
+                  </label>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={formData.notificationPreferences.dailySales}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          notificationPreferences: {
+                            ...formData.notificationPreferences,
+                            dailySales: e.target.checked,
+                          },
+                        })
+                      }
+                    />
+                    Daily Sales Summary
+                  </label>
                 </div>
-              )}
-              {!isMainAdminTarget && (
-                <div className="form-group">
-                  <label>Notification Preferences</label>
-                  <div className="checkbox-group">
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={formData.notificationPreferences.lowStock}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            notificationPreferences: {
-                              ...formData.notificationPreferences,
-                              lowStock: e.target.checked,
-                            },
-                          })
-                        }
-                      />
-                      Low Stock Alerts
-                    </label>
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={formData.notificationPreferences.expiry}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            notificationPreferences: {
-                              ...formData.notificationPreferences,
-                              expiry: e.target.checked,
-                            },
-                          })
-                        }
-                      />
-                      Expiry Alerts
-                    </label>
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={formData.notificationPreferences.dailySales}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            notificationPreferences: {
-                              ...formData.notificationPreferences,
-                              dailySales: e.target.checked,
-                            },
-                          })
-                        }
-                      />
-                      Daily Sales Summary
-                    </label>
-                  </div>
-                </div>
-              )}
+              </div>
               <div className="modal-actions">
                 <button
                   type="button"
@@ -1344,7 +1339,8 @@ const UsersManagementPage = () => {
                     />
                     {resetData.newPassword &&
                       resetData.confirmNewPassword &&
-                      resetData.newPassword !== resetData.confirmNewPassword && (
+                      resetData.newPassword !==
+                      resetData.confirmNewPassword && (
                         <p
                           style={{
                             color: "var(--red-600)",
@@ -1436,3 +1432,30 @@ const UsersManagementPage = () => {
                       className="form-input"
                     />
                   </div>
+                  <div className="modal-actions" style={{ marginTop: "24px" }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setResetStep(1)}
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      style={{ background: "var(--green-600)" }}
+                    >
+                      Complete Password Reset
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default UsersManagementPage;
