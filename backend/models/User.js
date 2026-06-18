@@ -44,8 +44,11 @@ const userSchema = new mongoose.Schema({
     default: false,
     select: false,
   },
-}, {
+},{
   timestamps: true,
+  indexes: [
+    { key: { isMainAdmin: 1 }, unique: true, partialFilterExpression: { isMainAdmin: true } },
+  ],
 });
 
 module.exports = mongoose.model('User', userSchema);

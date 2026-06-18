@@ -120,9 +120,22 @@ router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
       if (req.user.role === 'admin' && role !== 'pharmacist' && String(targetUser._id) !== String(req.user._id)) {
         return res.status(403).json({ success: false, message: 'Admins cannot elevate users.' });
       }
-      updates.role = role;
+      if (targetUser.isMainAdmin && role !== targetUser.role) {
+        return res.status(403).json({ success: false, message: 'Main Admin role is permanent and cannot be modified.' });
+      }
+      if (!targetUser.isMainAdmin) {
+        updates.role = role;
+      }
     }
 
+    const allowedMainAdminKeys = new Set(['username', 'password', 'notificationPreferences']);
+    const incomingKeys = new Set(Object.keys(req.body).filter(k => k !== 'adminPassword'));
+    for (const key of incomingKeys) {
+      if (targetUser.isMainAdmin && !allowedMainAdminKeys.has(key)) {
+        return res.status(403).json({ success: false, message: 'Main Admin privileges are permanent. Only username, password, and notification preferences can be updated.' });
+      }
+    }
+    if (req.body.password !== undefined) updates.password = req.body.password;
     if (notificationPreferences !== undefined) {
       updates.notificationPreferences = notificationPreferences;
     }
