@@ -18,7 +18,7 @@ const TABS = [
 
 export default function SettingsPage({ theme, onThemeChange, notificationSettings, onNotificationSettingsChange }) {
   const { user, logout } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'main_admin';
   const navigate = useNavigate();
   const restoreInputRef = useRef(null);
   const [activeTab, setActiveTab] = useState('notifications');
