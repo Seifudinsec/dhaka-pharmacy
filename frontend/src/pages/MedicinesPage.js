@@ -427,7 +427,7 @@ const StatusModal = ({ medicine, mode, onClose, onSaved }) => {
 
 export default function MedicinesPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "main_admin";
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
   const showLoader = useDelayedLoading(loading);

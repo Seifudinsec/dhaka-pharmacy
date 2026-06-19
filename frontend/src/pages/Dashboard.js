@@ -29,7 +29,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "main_admin";
   const showLoader = useDelayedLoading(loading);
 
   const fetchStats = useCallback(async () => {
