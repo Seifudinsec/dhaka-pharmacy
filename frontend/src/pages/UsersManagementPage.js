@@ -499,7 +499,7 @@ const UsersManagementPage = () => {
                       >
                         <AppIcon icon={faKey} />
                       </button>
-                      {!(user.isMainAdmin || user.role === 'main_admin') && (
+                      {user.role === 'pharmacist' && (
                         <button
                           className="btn btn-sm btn-danger"
                           onClick={() => openDeleteModal(user)}
@@ -665,7 +665,7 @@ const UsersManagementPage = () => {
                       >
                         <AppIcon icon={faKey} /> Reset
                       </button>
-                      {!(user.isMainAdmin || user.role === 'main_admin') && (
+                      {user.role === 'pharmacist' && (
                         <button
                           className="btn btn-sm btn-danger"
                           onClick={() => openDeleteModal(user)}
