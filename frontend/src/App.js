@@ -17,11 +17,12 @@ import {
   faFileImport,
   faFileInvoiceDollar,
   faGear,
-  faMoneyBillTrendUp,
   faMoon,
+  faMoneyBillTrendUp,
   faPills,
   faPrescriptionBottleMedical,
   faRightFromBracket,
+  faSun,
   faUserShield,
 } from "@fortawesome/free-solid-svg-icons";
 import { AuthProvider, useAuth } from "./context/AuthContext";
