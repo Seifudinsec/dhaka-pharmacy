@@ -56,8 +56,8 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// POST /api/auth/register (admin only in production; open for setup)
-router.post('/register', async (req, res) => {
+// POST /api/auth/register (admin only)
+router.post('/register', protect, adminOnly, async (req, res) => {
   try {
     const { username, password, role } = req.body;
 

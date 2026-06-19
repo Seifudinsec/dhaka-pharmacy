@@ -17,16 +17,20 @@ const seedData = async () => {
   await User.deleteMany({});
   await Medicine.deleteMany({});
 
-  // Create admin user
-  const salt = await bcrypt.genSalt(12);
-  const hashedPassword = await bcrypt.hash('admin123', salt);
-  await User.create({
-    username: 'admin',
-    password: hashedPassword,
-    role: 'main_admin',
-    isMainAdmin: true,
-  });
-  console.log('✅ Admin user created: admin / admin123');
+  const existingAdmin = await User.findOne({ isMainAdmin: true });
+  if (!existingAdmin) {
+    const salt = await bcrypt.genSalt(12);
+    const hashedPassword = await bcrypt.hash('admin123', salt);
+    await User.create({
+      username: 'admin',
+      password: hashedPassword,
+      role: 'main_admin',
+      isMainAdmin: true,
+    });
+    console.log('✅ Admin user created: admin / admin123');
+  } else {
+    console.log('ℹ️  Main Admin already exists. Skipping admin creation.');
+  }
 
   // Create sample medicines
   const medicines = [
