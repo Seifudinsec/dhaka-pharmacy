@@ -59,7 +59,7 @@ const getNavigationItems = (userRole) => {
     { path: "/import", icon: faFileImport, label: "Bulk Import" },
   ];
 
-  if (userRole === "admin") {
+  if (userRole === "admin" || userRole === "main_admin") {
     return [
       ...baseNav,
       { path: "/reports", icon: faChartLine, label: "Reports & Analytics" },
@@ -142,10 +142,10 @@ const Sidebar = ({ open, onClose }) => {
             </div>
             <div className="user-details">
               <strong>{user?.username}</strong>
-              <span>{user?.role === 'admin' ? 'Admin' : 'Pharmacist'}</span>
+              <span>{user?.role === 'admin' || user?.role === 'main_admin' ? 'Admin' : 'Pharmacist'}</span>
             </div>
           </div>
-          {user?.role === "admin" && (
+          {(user?.role === "admin" || user?.role === "main_admin") && (
             <button
               className="nav-item"
               onClick={() => {
@@ -318,37 +318,37 @@ const AppLayout = ({ theme, setTheme }) => {
             <Route path="/sales" element={<SalesPage />} />
             <Route path="/special-drugs" element={<SpecialDrugsPage />} />
             <Route path="/import" element={<ImportPage />} />
-            <Route
-              path="/reports"
-              element={
-                user?.role === "admin" ? <ReportsPage /> : <Navigate to="/" />
-              }
-            />
-            <Route
-              path="/users"
-              element={
-                user?.role === "admin" ? (
-                  <UsersManagementPage />
-                ) : (
-                  <Navigate to="/" />
-                )
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                user?.role === "admin" ? (
-                  <SettingsPage
-                    theme={theme}
-                    onThemeChange={setTheme}
-                    notificationSettings={notificationSettings}
-                    onNotificationSettingsChange={setNotificationSettings}
-                  />
-                ) : (
-                  <Navigate to="/" />
-                )
-              }
-            />
+              <Route
+                path="/reports"
+                element={
+                  user?.role === 'admin' || user?.role === 'main_admin' ? <ReportsPage /> : <Navigate to="/" />
+                }
+              />
+              <Route
+                path="/users"
+                element={
+                  user?.role === 'admin' || user?.role === 'main_admin' ? (
+                    <UsersManagementPage />
+                  ) : (
+                    <Navigate to="/" />
+                  )
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  user?.role === 'admin' || user?.role === 'main_admin' ? (
+                    <SettingsPage
+                      theme={theme}
+                      onThemeChange={setTheme}
+                      notificationSettings={notificationSettings}
+                      onNotificationSettingsChange={setNotificationSettings}
+                    />
+                  ) : (
+                    <Navigate to="/" />
+                  )
+                }
+              />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>

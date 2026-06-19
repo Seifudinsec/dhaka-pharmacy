@@ -7,7 +7,7 @@ const { protect, adminOnly } = require('../middleware/auth');
 router.use(protect);
 
 const pharmacistOrAdminOnly = (req, res, next) => {
-  if (!['admin', 'pharmacist'].includes(req.user.role)) {
+  if (!['admin', 'pharmacist', 'main_admin'].includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Access denied.' });
   }
   next();

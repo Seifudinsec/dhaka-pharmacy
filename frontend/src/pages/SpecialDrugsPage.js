@@ -117,7 +117,7 @@ export default function SpecialDrugsPage() {
                     <th>Phone</th>
                     <th>Prescription/Reason</th>
                     <th>Recorded By</th>
-                    {currentUser?.role === "admin" && <th>Actions</th>}
+                    {currentUser?.role === "admin" || currentUser?.role === "main_admin" && <th>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -172,7 +172,7 @@ export default function SpecialDrugsPage() {
                           {r.recordedBy?.username || "Unknown"}
                         </span>
                       </td>
-                      {currentUser?.role === "admin" && (
+                      {(currentUser?.role === "admin" || currentUser?.role === "main_admin") && (
                         <td data-label="Actions">
                           <div className="d-flex gap-2">
                             <button

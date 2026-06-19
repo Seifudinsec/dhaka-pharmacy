@@ -190,7 +190,7 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const query =
-      req.user.role === "pharmacist" ? { processedBy: req.user._id } : {};
+      ["admin", "pharmacist", "main_admin"].includes(req.user.role) ? {} : { processedBy: req.user._id };
 
     const returns = await Return.find(query)
       .populate("originalSale", "total createdAt status")
