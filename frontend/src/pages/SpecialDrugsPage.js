@@ -117,7 +117,7 @@ export default function SpecialDrugsPage() {
                     <th>Phone</th>
                     <th>Prescription/Reason</th>
                     <th>Recorded By</th>
-                    {currentUser?.role === "admin" || currentUser?.role === "main_admin" && <th>Actions</th>}
+                    {(currentUser?.role === "admin" || currentUser?.role === "main_admin") && <th>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
