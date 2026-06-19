@@ -1,5 +1,5 @@
-const STATIC_CACHE = "dhaka-pharmacy-static-v1";
-const API_CACHE = "dhaka-pharmacy-api-v1";
+const STATIC_CACHE = "dhaka-pharmacy-static-v2";
+const API_CACHE = "dhaka-pharmacy-api-v2";
 const APP_SHELL_ASSETS = [
   "/",
   "/index.html",

@@ -19,10 +19,10 @@ import {
   faGear,
   faMoneyBillTrendUp,
   faMoon,
-  faSun,
   faPills,
   faPrescriptionBottleMedical,
   faRightFromBracket,
+  faUserShield,
 } from "@fortawesome/free-solid-svg-icons";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { NotificationProvider } from "./context/NotificationContext";
@@ -47,27 +47,31 @@ import "./index.css";
 const getNavigationItems = (userRole) => {
   const baseNav = [
     { path: "/", icon: faChartLine, label: "Dashboard", exact: true },
-    { path: "/medicines", icon: faPills, label: "Medicines" },
-    { path: "/inventory", icon: faBoxesStacked, label: "Inventory" },
     { path: "/billing", icon: faFileInvoiceDollar, label: "Billing" },
     { path: "/sales", icon: faMoneyBillTrendUp, label: "Sales History" },
-    {
-      path: "/special-drugs",
-      icon: faPrescriptionBottleMedical,
-      label: "Special Drugs",
-    },
+  ];
+
+  const inventoryNav = [
+    { path: "/medicines", icon: faPills, label: "Medicines" },
+    { path: "/inventory", icon: faBoxesStacked, label: "Inventory" },
+    { path: "/special-drugs", icon: faPrescriptionBottleMedical, label: "Special Drugs" },
     { path: "/import", icon: faFileImport, label: "Bulk Import" },
   ];
 
-  if (userRole === "admin" || userRole === "main_admin") {
-    return [
-      ...baseNav,
-      { path: "/reports", icon: faChartLine, label: "Reports & Analytics" },
-      { path: "/users", icon: faGear, label: "User Management" },
-    ];
-  }
+  const adminNav =
+    userRole === "admin" || userRole === "main_admin"
+      ? [
+          { path: "/reports", icon: faChartLine, label: "Reports & Analytics" },
+          { path: "/users", icon: faUserShield, label: "User Management" },
+          { path: "/settings", icon: faGear, label: "Settings" },
+        ]
+      : [];
 
-  return baseNav;
+  return [
+    { section: "Main", items: baseNav },
+    { section: "Inventory", items: inventoryNav },
+    ...(adminNav.length ? [{ section: "Administration", items: adminNav }] : []),
+  ];
 };
 
 // Dark/light mode toggle button — visible in header for ALL users
@@ -111,20 +115,24 @@ const Sidebar = ({ open, onClose }) => {
         </div>
 
         <nav className="sidebar-nav">
-          <div className="nav-section-title">Main Menu</div>
-          {navigationItems.map(({ path, icon, label, exact }) => (
-            <NavLink
-              key={path}
-              to={path}
-              end={exact}
-              className={({ isActive }) =>
-                `nav-item${isActive ? " active" : ""}`
-              }
-              onClick={onClose}
-            >
-              <AppIcon icon={icon} size="lg" className="nav-icon" />
-              {label}
-            </NavLink>
+          {navigationItems.map(({ section, items }) => (
+            <div key={section} className="nav-section">
+              <div className="nav-section-title">{section}</div>
+              {items.map(({ path, icon, label, exact }) => (
+                <NavLink
+                  key={path}
+                  to={path}
+                  end={exact}
+                  className={({ isActive }) =>
+                    `nav-item${isActive ? " active" : ""}`
+                  }
+                  onClick={onClose}
+                >
+                  <AppIcon icon={icon} size="lg" className="nav-icon" />
+                  {label}
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -145,18 +153,6 @@ const Sidebar = ({ open, onClose }) => {
               <span>{user?.role === 'admin' || user?.role === 'main_admin' ? 'Admin' : 'Pharmacist'}</span>
             </div>
           </div>
-          {(user?.role === "admin" || user?.role === "main_admin") && (
-            <button
-              className="nav-item"
-              onClick={() => {
-                onClose();
-                navigate("/settings");
-              }}
-            >
-              <AppIcon icon={faGear} size="lg" className="nav-icon" />
-              Settings
-            </button>
-          )}
           <button className="nav-item nav-item-danger" onClick={logout}>
             <AppIcon icon={faRightFromBracket} size="lg" className="nav-icon" />
             Sign Out
