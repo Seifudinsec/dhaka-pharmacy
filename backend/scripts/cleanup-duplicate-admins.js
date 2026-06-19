@@ -5,11 +5,9 @@ const User = require(path.join(__dirname, '..', 'models', 'User'));
 
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
-  const idsToDelete = [
-    '6a343fb4aa8a83566205f5f1',
-    '6a3444eeb41eac857f0c7639',
-  ];
-  const result = await User.deleteMany({ _id: { $in: idsToDelete } });
+  const result = await User.deleteMany({
+    _id: { $ne: '6a34d862e49be028ae3efe5e' },
+  });
   console.log(JSON.stringify({ deleted: result.deletedCount }, null, 2));
 
   const remaining = await User.find({}, 'username role isMainAdmin').sort({ createdAt: -1 });

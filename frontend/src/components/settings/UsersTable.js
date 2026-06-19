@@ -31,7 +31,16 @@ export default function UsersTable({ users, onRoleChange, onDelete }) {
                 </td>
                 <td style={{ textTransform: 'capitalize' }}>{u.status || 'active'}</td>
                 <td>
-                  <span style={{ fontSize: 12, color: 'var(--slate-500)' }}>—</span>
+                  {isMainAdmin ? (
+                    <span style={{ fontSize: 12, color: 'var(--slate-500)' }}>—</span>
+                  ) : (
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => onDelete?.(u._id || u.id)}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </td>
               </tr>
             );
