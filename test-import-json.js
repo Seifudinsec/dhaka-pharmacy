@@ -1,7 +1,6 @@
 const axios = require('axios');
 
 const BASE_URL = 'http://localhost:5000/api';
-// You'll need a valid token to run this locally if protect middleware is active
 const TOKEN = 'YOUR_TOKEN_HERE';
 
 async function testImport() {
