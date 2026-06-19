@@ -159,7 +159,7 @@ const UsersManagementPage = () => {
     } catch (error) {
       toast.error(
         error.response?.data?.message ||
-        "Verification failed. Please check your password.",
+          "Verification failed. Please check your password.",
       );
     } finally {
       setVerifying(false);
@@ -196,7 +196,7 @@ const UsersManagementPage = () => {
     } catch (error) {
       toast.error(
         error.response?.data?.message ||
-        "Verification failed. Please check your password.",
+          "Verification failed. Please check your password.",
       );
     } finally {
       setVerifying(false);
@@ -400,13 +400,18 @@ const UsersManagementPage = () => {
                       </div>
                       <div>
                         <div className="user-name">{user.username}</div>
-                        <div className="user-role-badge">{user.role === 'main_admin' ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}</div>
+                        <div className="user-role-badge">{user.role}</div>
                       </div>
                     </div>
                   </td>
                   <td data-label="Role">
-                    <span className={`role-badge ${user.role === 'main_admin' ? 'admin' : user.role === 'admin' ? 'admin' : 'pharmacist'}`}>
-                      {user.role === 'main_admin' ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}
+                    <span className={`role-badge ${user.role}`}>
+                      <AppIcon
+                        icon={
+                          user.role === "admin" ? faUserShield : faUserClock
+                        }
+                      />
+                      {user.role}
                     </span>
                   </td>
                   <td data-label="Status">
@@ -494,21 +499,23 @@ const UsersManagementPage = () => {
                       >
                         <AppIcon icon={faKey} />
                       </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => openDeleteModal(user)}
-                        disabled={actionLoading[`delete_${user._id}`]}
-                        title="Delete user"
-                      >
-                        {actionLoading[`delete_${user._id}`] ? (
-                          <span
-                            className="spinner spinner-sm"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <AppIcon icon={faTrash} />
-                        )}
-                      </button>
+                      {user.username !== "admin" && (
+                        <button
+                          className="btn btn-sm btn-danger"
+                          onClick={() => openDeleteModal(user)}
+                          disabled={actionLoading[`delete_${user._id}`]}
+                          title="Delete user"
+                        >
+                          {actionLoading[`delete_${user._id}`] ? (
+                            <span
+                              className="spinner spinner-sm"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <AppIcon icon={faTrash} />
+                          )}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -539,7 +546,7 @@ const UsersManagementPage = () => {
                         className="user-role-badge"
                         style={{ display: "inline-block" }}
                       >
-                        {user.role === 'main_admin' ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}
+                        {user.role}
                       </div>
                     </div>
                   </div>
@@ -550,8 +557,13 @@ const UsersManagementPage = () => {
                   <div className="user-mobile-card-body">
                     <div className="user-mobile-row">
                       <span className="user-mobile-label">Role</span>
-                      <span className={`role-badge ${user.role === 'main_admin' ? 'admin' : user.role === 'admin' ? 'admin' : 'pharmacist'}`}>
-                        {user.role === 'main_admin' ? 'Main Admin' : user.role === 'admin' ? 'Admin' : 'Pharmacist'}
+                      <span className={`role-badge ${user.role}`}>
+                        <AppIcon
+                          icon={
+                            user.role === "admin" ? faUserShield : faUserClock
+                          }
+                        />
+                        {user.role}
                       </span>
                     </div>
 
@@ -653,22 +665,24 @@ const UsersManagementPage = () => {
                       >
                         <AppIcon icon={faKey} /> Reset
                       </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => openDeleteModal(user)}
-                        disabled={actionLoading[`delete_${user._id}`]}
-                        title="Delete user"
-                      >
-                        {actionLoading[`delete_${user._id}`] ? (
-                          <span
-                            className="spinner spinner-sm"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <AppIcon icon={faTrash} />
-                        )}{" "}
-                        Delete
-                      </button>
+                      {user.username !== "admin" && (
+                        <button
+                          className="btn btn-sm btn-danger"
+                          onClick={() => openDeleteModal(user)}
+                          disabled={actionLoading[`delete_${user._id}`]}
+                          title="Delete user"
+                        >
+                          {actionLoading[`delete_${user._id}`] ? (
+                            <span
+                              className="spinner spinner-sm"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <AppIcon icon={faTrash} />
+                          )}{" "}
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1340,7 +1354,7 @@ const UsersManagementPage = () => {
                     {resetData.newPassword &&
                       resetData.confirmNewPassword &&
                       resetData.newPassword !==
-                      resetData.confirmNewPassword && (
+                        resetData.confirmNewPassword && (
                         <p
                           style={{
                             color: "var(--red-600)",
