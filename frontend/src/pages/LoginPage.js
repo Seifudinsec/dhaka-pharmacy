@@ -71,7 +71,7 @@ export default function LoginPage() {
             {/* Logo + branding */}
             <div className="glitch-logo">
               <img
-                src="/dhaka-pharmacy-logo.png"
+                src="/dhaka-pharmacy-logo.jpg"
                 alt="Dhaka Pharmacy logo"
                 style={{
                   width: "100%",

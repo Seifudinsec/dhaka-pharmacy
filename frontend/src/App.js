@@ -99,7 +99,7 @@ const Sidebar = ({ open, onClose }) => {
       <aside className={`sidebar ${open ? "open" : ""}`}>
         <div className="sidebar-logo">
           <img
-            src="/dhaka-pharmacy-logo.png"
+            src="/dhaka-pharmacy-logo.jpg"
             alt="Dhaka Pharmacy logo"
             style={{
               width: 44,
@@ -244,7 +244,7 @@ const AppLayout = ({ theme, setTheme }) => {
               <AppIcon icon={faBars} />
             </button>
             <img
-              src="/dhaka-pharmacy-logo.png"
+              src="/dhaka-pharmacy-logo.jpg"
               alt="Dhaka Pharmacy"
               style={{
                 width: 34,

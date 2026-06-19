@@ -81,7 +81,7 @@ export default function FullScreenLoader({ visible, text = 'Signing you in...' }
         {/* Body */}
         <div style={{ padding: '2rem 1.8rem', textAlign: 'center' }}>
           <img
-            src="/dhaka-pharmacy-logo.png"
+            src="/dhaka-pharmacy-logo.jpg"
             alt="Dhaka Pharmacy"
             style={{ width: 72, height: 72, objectFit: 'contain', borderRadius: 8, margin: '0 auto 14px', display: 'block' }}
           />

@@ -5,7 +5,7 @@ const APP_SHELL_ASSETS = [
   "/index.html",
   "/manifest.json",
   "/favicon.png",
-  "/dhaka-pharmacy-logo.png",
+  "/dhaka-pharmacy-logo.jpg",
   "/apple-touch-icon.png",
   "/icons/icon-192.png",
   "/icons/icon-512.png",

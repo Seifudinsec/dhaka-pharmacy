@@ -85,7 +85,7 @@ export default function Dashboard() {
             </p>
           </div>
           <img
-            src="/dhaka-pharmacy-logo.png"
+            src="/dhaka-pharmacy-logo.jpg"
             alt="Dhaka Pharmacy logo"
             style={{ height: 64, width: "auto", objectFit: "contain" }}
           />
