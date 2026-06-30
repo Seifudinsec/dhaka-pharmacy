@@ -283,14 +283,10 @@ const AppLayout = ({ theme, setTheme }) => {
             />
             <span className="greeting-mobile">{getGreeting()}, <strong>{user?.username || 'User'}</strong></span>
             <h1 className="page-title">
-              <AppIcon
-                icon={currentPage?.icon || faGear}
-                className="page-title-icon"
-              />
-              {currentPage?.label ||
-                (location.pathname === "/settings"
-                  ? "Settings"
-                  : "Dhaka Pharmacy")}
+              {currentPage?.icon && (
+                <AppIcon icon={currentPage.icon} className="page-title-icon" />
+              )}
+              {currentPage?.label}
             </h1>
           </div>
           <div className="header-actions">
