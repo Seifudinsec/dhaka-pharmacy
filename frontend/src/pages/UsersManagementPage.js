@@ -22,8 +22,10 @@ import {
   faCircleXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { SkeletonTable } from "../components/common/SkeletonLoaders";
+import { useAuth } from "../context/AuthContext";
 
 const UsersManagementPage = () => {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -33,6 +35,7 @@ const UsersManagementPage = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteAdminPassword, setDeleteAdminPassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const [formData, setFormData] = useState({
     username: "",
     password: "",
@@ -255,10 +258,12 @@ const UsersManagementPage = () => {
   const closeDeleteModal = () => {
     setDeleteTarget(null);
     setDeleteAdminPassword("");
+    setDeleteError("");
   };
 
   const handleDeleteUser = async (e) => {
     e.preventDefault();
+    setDeleteError("");
     if (!deleteTarget) {
       return;
     }
@@ -276,7 +281,7 @@ const UsersManagementPage = () => {
       }
     } catch (error) {
       console.error("Error deleting user:", error);
-      toast.error(error.response?.data?.message || "Failed to delete user");
+      setDeleteError(error.response?.data?.message || "Failed to delete user");
     } finally {
       setActionLoading((prev) => ({ ...prev, [`delete_${userId}`]: false }));
     }
@@ -499,7 +504,7 @@ const UsersManagementPage = () => {
                       >
                         <AppIcon icon={faKey} />
                       </button>
-                      {user.role === 'pharmacist' || user.role === 'admin' ? (
+                      {(currentUser.role === 'main_admin' && (user.role === 'admin' || user.role === 'pharmacist')) || (currentUser.role === 'admin' && user.role === 'pharmacist') ? (
                         <button
                           className="btn btn-sm btn-danger"
                           onClick={() => openDeleteModal(user)}
@@ -665,7 +670,7 @@ const UsersManagementPage = () => {
                       >
                         <AppIcon icon={faKey} /> Reset
                       </button>
-                      {user.role === 'pharmacist' || user.role === 'admin' ? (
+                      {(currentUser.role === 'main_admin' && (user.role === 'admin' || user.role === 'pharmacist')) || (currentUser.role === 'admin' && user.role === 'pharmacist') ? (
                         <button
                           className="btn btn-sm btn-danger"
                           onClick={() => openDeleteModal(user)}
@@ -954,21 +959,27 @@ const UsersManagementPage = () => {
                     <strong>{deleteTarget.username}</strong>.
                   </p>
                 </div>
-                <div className="form-group">
-                  <label htmlFor="delete-admin-password">
-                    Your Admin Password
-                  </label>
-                  <input
-                    id="delete-admin-password"
-                    type="password"
-                    required
-                    autoFocus
-                    placeholder="Enter your current password"
-                    value={deleteAdminPassword}
-                    onChange={(e) => setDeleteAdminPassword(e.target.value)}
-                    className="form-input"
-                  />
-                </div>
+                  <div className="form-group">
+                    <label htmlFor="delete-admin-password">
+                      Your Admin Password
+                    </label>
+                    <input
+                      id="delete-admin-password"
+                      type="password"
+                      required
+                      autoFocus
+                      placeholder="Enter your current password"
+                      value={deleteAdminPassword}
+                      onChange={(e) => {
+                        setDeleteAdminPassword(e.target.value);
+                        setDeleteError("");
+                      }}
+                      className={`form-input${deleteError ? " input-error" : ""}`}
+                    />
+                    {deleteError && (
+                      <div className="form-error">{deleteError}</div>
+                    )}
+                  </div>
               </div>
               <div className="modal-actions">
                 <button

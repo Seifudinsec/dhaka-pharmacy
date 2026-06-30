@@ -88,7 +88,7 @@ export default function SpecialDrugsPage() {
             </div>
           </div>
 
-          <div className="table-wrap">
+          <div className="table-wrap table-responsive-cards">
             {loading ? (
               <div className="p-3">
                 <SkeletonTable rows={10} cols={6} />

@@ -89,7 +89,7 @@ const ThemeToggleBtn = ({ theme, onToggle }) => (
   </button>
 );
 
-const Sidebar = ({ open, onClose }) => {
+const Sidebar = ({ open, onClose, theme, onThemeChange }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const navigationItems = getNavigationItems(user?.role);
@@ -135,6 +135,25 @@ const Sidebar = ({ open, onClose }) => {
               ))}
             </div>
           ))}
+
+          <div className="nav-section sidebar-mobile-only">
+            <div className="nav-section-title">Preferences</div>
+            <button
+              className="nav-item"
+              onClick={() => {
+                onThemeChange((t) => (t === "dark" ? "light" : "dark"));
+                onClose();
+              }}
+            >
+              <AppIcon
+                icon={theme === "dark" ? faSun : faMoon}
+                size="lg"
+                className="nav-icon"
+              />
+              {theme === "dark" ? "Light Mode" : "Dark Mode"}
+            </button>
+            <InstallAppButton variant="sidebar" />
+          </div>
         </nav>
 
         <div className="sidebar-footer">
@@ -168,6 +187,13 @@ const AppLayout = ({ theme, setTheme }) => {
   const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    return "Good evening";
+  };
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -230,10 +256,10 @@ const AppLayout = ({ theme, setTheme }) => {
 
   return (
     <div className="app-layout">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} theme={theme} onThemeChange={setTheme} />
       <div className="main-content">
         <header className="page-header">
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, overflow: "hidden" }}>
             <button
               className="btn btn-secondary btn-icon sidebar-toggle"
               onClick={(e) => {
@@ -252,17 +278,15 @@ const AppLayout = ({ theme, setTheme }) => {
                 height: 34,
                 objectFit: "contain",
                 borderRadius: 4,
+                flexShrink: 0,
               }}
             />
+            <span className="greeting-mobile">{getGreeting()}, <strong>{user?.username || 'User'}</strong></span>
             <h1 className="page-title">
-              <AppIcon
-                icon={currentPage?.icon || faGear}
-                className="page-title-icon"
-              />
-              {currentPage?.label ||
-                (location.pathname === "/settings"
-                  ? "Settings"
-                  : "Dhaka Pharmacy")}
+              {currentPage?.icon && (
+                <AppIcon icon={currentPage.icon} className="page-title-icon" />
+              )}
+              {currentPage?.label}
             </h1>
           </div>
           <div className="header-actions">
@@ -286,8 +310,8 @@ const AppLayout = ({ theme, setTheme }) => {
                 Offline
               </div>
             )}
+            <NotificationBell />
             <div className="header-controls">
-              <NotificationBell />
               <InstallAppButton />
               <ThemeToggleBtn
                 theme={theme}

@@ -45,7 +45,7 @@ router.post('/', auditLog('USER_CREATED', 'User'), async (req, res) => {
     const admin = await User.findById(req.user._id).select('+password');
     const isMatch = await bcrypt.compare(adminPassword, admin.password);
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Admin password incorrect. Authorization failed.' });
+      return res.status(400).json({ success: false, message: 'Admin password incorrect. Authorization failed.' });
     }
 
     if (!username || !password) {
@@ -169,7 +169,7 @@ router.post('/:id/reset-password', auditLog('USER_PASSWORD_RESET', 'User'), asyn
     const isMatch = await bcrypt.compare(confirmPassword, admin.password);
 
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Confirmation password incorrect. Authorization failed.' });
+      return res.status(400).json({ success: false, message: 'Confirmation password incorrect. Authorization failed.' });
     }
 
     if (req.user.role === 'admin') {
@@ -215,7 +215,7 @@ router.post('/verify-password', async (req, res) => {
     if (isMatch) {
       res.json({ success: true, message: 'Password verified.' });
     } else {
-      res.status(401).json({ success: false, message: 'Incorrect password verification failed.' });
+      res.status(400).json({ success: false, message: 'Incorrect password verification failed.' });
     }
   } catch (error) {
     console.error('Verify password error:', error);
@@ -276,10 +276,14 @@ router.delete('/:id', async (req, res) => {
       return res.status(403).json({ success: false, message: 'The Main Admin account cannot be deleted.' });
     }
 
-    if (req.user.role === 'admin') {
-      if (targetUser.role === 'admin' && String(targetUser._id) !== String(req.user._id)) {
-        return res.status(403).json({ success: false, message: 'Admins cannot delete other admins.' });
-      }
+    // Admins cannot delete themselves
+    if (req.user.role === 'admin' && String(req.user._id) === String(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
+    }
+
+    // Only main_admin can delete admin users
+    if (targetUser.role === 'admin' && req.user.role !== 'main_admin') {
+      return res.status(403).json({ success: false, message: 'Only the Main Admin can delete admin users.' });
     }
 
     const { adminPassword } = req.body || {};
@@ -290,7 +294,7 @@ router.delete('/:id', async (req, res) => {
     const admin = await User.findById(req.user._id).select('+password');
     const isMatch = await bcrypt.compare(adminPassword, admin.password);
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Admin password incorrect. Authorization failed.' });
+      return res.status(400).json({ success: false, message: 'Admin password incorrect. Authorization failed.' });
     }
 
     if (String(req.user._id) === String(req.params.id)) {

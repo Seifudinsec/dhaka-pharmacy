@@ -196,7 +196,7 @@ export default function BillingPage() {
               />
             </div>
           </div>
-          <div className="table-wrap" style={{ maxHeight: 500 }}>
+          <div className="table-wrap table-responsive-cards" style={{ maxHeight: 500 }}>
             {showFetchLoader ? (
               <div className="p-3">
                 <SkeletonTable rows={6} cols={4} />
@@ -223,11 +223,11 @@ export default function BillingPage() {
                     const isOutOfStock = m.stock <= 0;
                     return (
                       <tr key={m._id}>
-                        <td>
+                        <td data-label="Medicine">
                           <strong>{m.name}</strong>
                         </td>
-                        <td>KES {Number(m.price).toFixed(2)}</td>
-                        <td>
+                        <td data-label="Price">KES {Number(m.price).toFixed(2)}</td>
+                        <td data-label="Stock">
                           {isExpired ? (
                             <span className="badge badge-red">Expired</span>
                           ) : isOutOfStock ? (
@@ -242,7 +242,7 @@ export default function BillingPage() {
                             </span>
                           )}
                         </td>
-                        <td>
+                        <td data-label="Action">
                           <button
                             className="btn btn-primary btn-sm"
                             onClick={() => addToCart(m)}

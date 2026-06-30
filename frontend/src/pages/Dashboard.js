@@ -62,23 +62,14 @@ export default function Dashboard() {
   return (
     <div>
       <div className="card" style={{ marginBottom: 16 }}>
-        <div
-          className="card-body"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <h2 style={{ marginBottom: 4 }}>
+        <div className="card-body dashboard-head-card">
+          <div className="dashboard-head-text">
+            <h2 className="dashboard-head-title">
               {isAdmin
                 ? "Pharmacy Analytics Dashboard"
                 : "Pharmacy Operations Dashboard"}
             </h2>
-            <p style={{ color: "var(--gray-600)", fontSize: 13 }}>
+            <p className="dashboard-head-sub">
               {isAdmin
                 ? "Monitor financial performance, inventory health, and sales analytics."
                 : "Track inventory status, alerts, and daily operations."}
@@ -273,29 +264,58 @@ export default function Dashboard() {
               >
                 Potential Loss Items (in stock)
               </h3>
-              {!stats?.topLossProducts?.length ? (
+              {stats?.totalPotentialLoss > 0 && (
+                <p style={{ fontSize: 13, color: "var(--danger-700)", marginBottom: 10, fontWeight: 600 }}>
+                  Total at risk: KES {stats.totalPotentialLoss.toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                </p>
+              )}
+              {!stats?.potentialLossItems?.length ? (
                 <p style={{ fontSize: 13, color: "var(--gray-500)" }}>
                   No loss-making products found.
                 </p>
               ) : (
-                stats.topLossProducts.map((p) => (
-                  <div
-                    key={p._id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginBottom: 6,
-                      fontSize: 13,
-                    }}
-                  >
-                    <span>
-                      {p.name} (x{p.stock})
-                    </span>
-                    <strong style={{ color: "var(--danger)" }}>
-                      KES {Number(p.estimatedStockProfit).toFixed(2)}
-                    </strong>
-                  </div>
-                ))
+                <>
+                  {stats.potentialLossItems.map((p) => {
+                    const lossLabel =
+                      p.lossType === "EXPIRED"
+                        ? { text: "Expired", color: "var(--danger-700)" }
+                        : p.lossType === "BELOW_COST"
+                          ? { text: "Below cost", color: "var(--danger)" }
+                          : { text: "Expiring risk", color: "var(--warning)" };
+                    return (
+                      <div
+                        key={p._id}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          marginBottom: 6,
+                          fontSize: 13,
+                        }}
+                      >
+                        <span>
+                          {p.name} (x{p.stock})
+                          <span
+                            style={{
+                              display: "inline-block",
+                              marginLeft: 6,
+                              padding: "0 6px",
+                              fontSize: 10,
+                              fontWeight: 600,
+                              borderRadius: 4,
+                              background: lossLabel.color,
+                              color: "#fff",
+                            }}
+                          >
+                            {lossLabel.text}
+                          </span>
+                        </span>
+                        <strong style={{ color: lossLabel.color }}>
+                          KES {Number(p.lossAmount).toFixed(2)}
+                        </strong>
+                      </div>
+                    );
+                  })}
+                </>
               )}
             </div>
           </div>

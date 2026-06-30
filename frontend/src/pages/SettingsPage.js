@@ -94,7 +94,14 @@ export default function SettingsPage({ theme, onThemeChange, notificationSetting
       try {
         const payload = JSON.parse(String(reader.result || '{}'));
         const { data } = await api.post('/settings/restore', payload);
-        toast.success(data.message || 'Restore completed.');
+        if (data.counts) {
+          const lines = Object.entries(data.counts)
+            .filter(([, v]) => !v.skipped)
+            .map(([k, v]) => `${k}: ${v.count}${v.writeErrors ? ` (${v.writeErrors} skipped)` : ""}`);
+          toast.success(`Restore completed.\n${lines.join("\n")}`, { duration: 6000 });
+        } else {
+          toast.success(data.message || "Restore completed.");
+        }
       } catch (error) {
         toast.error(error.response?.data?.message || 'Invalid restore file.');
       }
