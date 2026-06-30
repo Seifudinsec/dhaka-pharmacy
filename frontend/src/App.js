@@ -251,7 +251,7 @@ const AppLayout = ({ theme, setTheme }) => {
     <div className="app-layout">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} theme={theme} onThemeChange={setTheme} />
       <div className="main-content">
-        <header className="page-header">
+        <header className={`page-header${location.pathname === "/" ? " page-header--dashboard" : ""}`}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, overflow: "hidden" }}>
             <button
               className="btn btn-secondary btn-icon sidebar-toggle"

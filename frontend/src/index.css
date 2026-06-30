@@ -770,6 +770,10 @@ body {
         align-items: center;
     }
 
+    .page-header--dashboard img[alt="Dhaka Pharmacy"] {
+        display: none;
+    }
+
     .header-actions {
         width: auto;
         justify-content: flex-end;
