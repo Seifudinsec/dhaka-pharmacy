@@ -84,6 +84,19 @@ router.post('/backup', adminOnly, async (req, res) => {
   }
 });
 
+const normalizeText = (value = "") =>
+  String(value).trim().toLowerCase().replace(/\s+/g, " ");
+
+const normalizeBatch = (value = "") =>
+  String(value).trim().toUpperCase().replace(/\s+/g, "");
+
+const toDateKey = (value) => {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+};
+
 // POST /api/settings/restore
 router.post('/restore', adminOnly, async (req, res) => {
   try {
@@ -94,24 +107,39 @@ router.post('/restore', adminOnly, async (req, res) => {
     let restored = 0;
     for (const med of medicines) {
       if (!med?.name) continue;
+
+      const name = String(med.name).trim();
+      const batchNumber = String(med.batchNumber || "restored-batch").trim();
+      const expiryDate = med.expiryDate ? new Date(med.expiryDate) : new Date();
+      const normalizedName = normalizeText(name);
+      const productKey = normalizedName;
+      const batchNumberNormalized = normalizeBatch(batchNumber);
+      const expiryDateKey = toDateKey(expiryDate);
+
       await Medicine.findOneAndUpdate(
-        { name: { $regex: `^${String(med.name).trim()}$`, $options: 'i' } },
+        { productKey, batchNumberNormalized, expiryDateKey },
         {
-          name: String(med.name).trim(),
+          name,
+          normalizedName,
+          productKey,
           price: Number(med.price || 0),
           buyingPrice: Number(med.buyingPrice || med.price || 0),
-          batchNumber: String(med.batchNumber || 'restored-batch'),
+          batchNumber,
+          batchNumberNormalized,
           stock: Number(med.stock || 0),
-          expiryDate: med.expiryDate ? new Date(med.expiryDate) : new Date(),
+          expiryDate,
+          expiryDateKey,
+          status: med.status || "active",
+          lastImportId: med.lastImportId || null,
         },
-        { upsert: true, new: true, runValidators: true }
+        { upsert: true, new: true, runValidators: true },
       );
       restored++;
     }
     res.json({ success: true, message: `Restore completed. Medicines restored: ${restored}.` });
   } catch (error) {
-    console.error('Restore error:', error);
-    res.status(500).json({ success: false, message: 'Failed to restore backup.' });
+    console.error("Restore error:", error);
+    res.status(500).json({ success: false, message: "Failed to restore backup." });
   }
 });
 
