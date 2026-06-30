@@ -274,6 +274,7 @@ const AppLayout = ({ theme, setTheme }) => {
                 flexShrink: 0,
               }}
             />
+            <span className="greeting-mobile">Hi, {user?.username || 'User'}</span>
             <h1 className="page-title">
               <AppIcon
                 icon={currentPage?.icon || faGear}

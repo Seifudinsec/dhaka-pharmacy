@@ -725,6 +725,16 @@ body {
     flex-shrink: 0;
 }
 
+.greeting-mobile {
+    display: none;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--gray-900);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .header-inline-icon {
     margin-right: 6px;
     color: var(--primary);
@@ -745,6 +755,14 @@ body {
 @media (max-width: 768px) {
     .header-controls {
         display: none;
+    }
+
+    .page-title {
+        display: none;
+    }
+
+    .greeting-mobile {
+        display: block;
     }
 
     .page-header {
