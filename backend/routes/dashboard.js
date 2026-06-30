@@ -31,6 +31,7 @@ router.get('/stats', async (req, res) => {
       topLossProducts,
       criticalStockItems,
       expiredItems,
+      totalPotentialLossAgg,
     ] = await Promise.all([
       Medicine.countDocuments({ status: 'active' }),
       Medicine.countDocuments({ status: 'active', stock: { $gt: 0, $lt: 10 } }),
@@ -64,18 +65,92 @@ router.get('/stats', async (req, res) => {
         { $project: { name: 1, stock: 1, price: 1, buyingPrice: 1, estimatedStockProfit: 1, _id: 1 } },
       ]),
       Medicine.aggregate([
+        { $match: { status: 'active', stock: { $gt: 0 } } },
         {
           $addFields: {
-            estimatedStockProfit: { $multiply: [{ $subtract: ['$price', '$buyingPrice'] }, '$stock'] },
+            isExpired: { $lt: ['$expiryDate', now] },
+            isExpiringSoon: { $and: [{ $gte: ['$expiryDate', now] }, { $lte: ['$expiryDate', nextMonth] }] },
+            sellsBelowCost: { $lt: ['$price', '$buyingPrice'] },
           },
         },
-        { $match: { status: 'active', estimatedStockProfit: { $lt: 0 } } },
-        { $sort: { estimatedStockProfit: 1 } },
-        { $limit: 5 },
-        { $project: { name: 1, stock: 1, price: 1, buyingPrice: 1, estimatedStockProfit: 1, _id: 1 } },
+        {
+          $addFields: {
+            lossType: {
+              $cond: [
+                '$isExpired',
+                'EXPIRED',
+                {
+                  $cond: [
+                    '$sellsBelowCost',
+                    'BELOW_COST',
+                    {
+                      $cond: [{ $and: ['$isExpiringSoon', { $gte: ['$stock', 10] }] }, 'EXPIRING_RISK', null],
+                    },
+                  ],
+                },
+              ],
+            },
+            lossAmount: {
+              $cond: [
+                '$isExpired',
+                { $multiply: ['$buyingPrice', '$stock'] },
+                {
+                  $cond: [
+                    '$sellsBelowCost',
+                    { $multiply: [{ $subtract: ['$buyingPrice', '$price'] }, '$stock'] },
+                    { $multiply: ['$buyingPrice', '$stock'] },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        { $match: { lossType: { $ne: null } } },
+        { $sort: { lossAmount: -1 } },
+        { $limit: 10 },
+        {
+          $project: {
+            name: 1, stock: 1, price: 1, buyingPrice: 1, expiryDate: 1,
+            lossType: 1, lossAmount: 1, _id: 1,
+          },
+        },
       ]),
       Medicine.find({ status: 'active', stock: { $lt: 10 } }).limit(5),
       Medicine.find({ status: 'active', expiryDate: { $lt: now } }).limit(5),
+      Medicine.aggregate([
+        { $match: { status: 'active', stock: { $gt: 0 } } },
+        {
+          $addFields: {
+            isExpired: { $lt: ['$expiryDate', now] },
+            sellsBelowCost: { $lt: ['$price', '$buyingPrice'] },
+            isExpiringSoon: { $and: [{ $gte: ['$expiryDate', now] }, { $lte: ['$expiryDate', nextMonth] }] },
+          },
+        },
+        {
+          $addFields: {
+            lossAmount: {
+              $cond: [
+                '$isExpired',
+                { $multiply: ['$buyingPrice', '$stock'] },
+                {
+                  $cond: [
+                    '$sellsBelowCost',
+                    { $multiply: [{ $subtract: ['$buyingPrice', '$price'] }, '$stock'] },
+                    {
+                      $cond: [
+                        { $and: ['$isExpiringSoon', { $gte: ['$stock', 10] }] },
+                        { $multiply: ['$buyingPrice', '$stock'] },
+                        0,
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        { $group: { _id: null, total: { $sum: '$lossAmount' } } },
+      ]),
     ]);
 
     res.json({
@@ -95,7 +170,8 @@ router.get('/stats', async (req, res) => {
         },
         todayProfit: Number((todayProfitAgg[0]?.totalProfit || 0).toFixed(2)),
         topProfitProducts,
-        topLossProducts,
+        potentialLossItems: topLossProducts,
+        totalPotentialLoss: Number((totalPotentialLossAgg[0]?.total || 0).toFixed(2)),
         recentSales,
         criticalStockItems,
         expiredItems,
