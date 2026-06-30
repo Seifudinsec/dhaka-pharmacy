@@ -749,6 +749,7 @@ body {
 
     .page-header {
         flex-wrap: nowrap;
+        align-items: center;
     }
 
     .header-actions {
