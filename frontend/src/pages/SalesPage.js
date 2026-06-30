@@ -417,7 +417,7 @@ export default function SalesPage() {
                     {expanded === sale._id && (
                       <tr>
                         <td colSpan={7} className="sales-details-cell">
-                          <table style={{ width: "auto", minWidth: 400 }}>
+                          <table style={{ width: "100%", minWidth: 0 }}>
                             <thead>
                               <tr>
                                 <th>Medicine</th>

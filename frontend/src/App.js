@@ -233,7 +233,7 @@ const AppLayout = ({ theme, setTheme }) => {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="main-content">
         <header className="page-header">
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, overflow: "hidden" }}>
             <button
               className="btn btn-secondary btn-icon sidebar-toggle"
               onClick={(e) => {
@@ -252,6 +252,7 @@ const AppLayout = ({ theme, setTheme }) => {
                 height: 34,
                 objectFit: "contain",
                 borderRadius: 4,
+                flexShrink: 0,
               }}
             />
             <h1 className="page-title">

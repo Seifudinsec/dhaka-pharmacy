@@ -47,6 +47,12 @@
     position: relative;
 }
 
+@media (max-width: 600px) {
+    .drop-zone {
+        padding: 24px 12px;
+    }
+}
+
 .drop-zone:hover,
 .drop-zone.drag-over {
     border-color: var(--primary);
