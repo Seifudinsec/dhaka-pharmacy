@@ -582,6 +582,28 @@ body {
     background: var(--danger-light);
 }
 
+.sidebar-mobile-only {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .sidebar-mobile-only {
+        display: block;
+    }
+}
+
+.sidebar-install-btn {
+    background: var(--primary) !important;
+    color: #fff !important;
+    border-radius: var(--radius) !important;
+    margin-top: 6px;
+    font-weight: 600;
+}
+
+[data-theme="dark"] .sidebar-install-btn {
+    background: #2563eb !important;
+}
+
 .sidebar-footer {
     padding: 12px 10px;
     border-top: 1px solid var(--gray-100);
@@ -721,12 +743,20 @@ body {
 }
 
 @media (max-width: 768px) {
+    .header-controls {
+        display: none;
+    }
+
+    .page-header {
+        flex-wrap: nowrap;
+    }
+
     .header-actions {
-        width: 100%;
-        justify-content: space-between;
-        padding-top: 10px;
-        padding-bottom: 4px;
-        border-top: 1px solid var(--gray-100);
+        width: auto;
+        justify-content: flex-end;
+        padding-top: 0;
+        padding-bottom: 0;
+        border-top: none;
     }
 }
 

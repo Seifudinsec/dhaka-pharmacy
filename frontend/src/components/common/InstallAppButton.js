@@ -14,7 +14,7 @@ const isSafariBrowser = () => (
   !/chrome|chromium|crios|fxios|edgios|opr|opera|samsungbrowser/i.test(window.navigator.userAgent)
 );
 
-export default function InstallAppButton() {
+export default function InstallAppButton({ variant = "default" }) {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(() => (
     typeof window !== 'undefined' ? isStandaloneMode() : false
@@ -90,6 +90,22 @@ export default function InstallAppButton() {
     }
     setInstallPrompt(null);
   };
+
+  if (variant === "sidebar") {
+    if (isInstalled || (!installPrompt && !manualInstallMode)) {
+      return null;
+    }
+    return (
+      <button
+        className="nav-item sidebar-install-btn"
+        onClick={handleInstall}
+        type="button"
+      >
+        <AppIcon icon={faDownload} size="lg" className="nav-icon" />
+        Download App
+      </button>
+    );
+  }
 
   if (isInstalled || (!installPrompt && !manualInstallMode)) {
     return null;
