@@ -770,7 +770,7 @@ body {
         align-items: center;
     }
 
-    img[alt="Dhaka Pharmacy logo"] {
+    .card-body img[alt="Dhaka Pharmacy logo"] {
         display: none;
     }
 
