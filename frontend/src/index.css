@@ -727,7 +727,7 @@ body {
 
 .greeting-mobile {
     display: block;
-    font-size: 14px;
+    font-size: clamp(16px, 2.8vw, 30px);
     font-weight: 500;
     color: var(--gray-600);
     white-space: nowrap;
@@ -739,12 +739,6 @@ body {
 .greeting-mobile strong {
     color: var(--gray-900);
     font-weight: 700;
-}
-
-@media (min-width: 1024px) {
-    .greeting-mobile {
-        font-size: 24px;
-    }
 }
 
 .header-inline-icon {
