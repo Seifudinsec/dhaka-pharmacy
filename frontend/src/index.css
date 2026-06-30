@@ -727,7 +727,7 @@ body {
 
 .greeting-mobile {
     display: block;
-    font-size: clamp(16px, 2.8vw, 30px);
+    font-size: clamp(14px, 2vw, 28px);
     font-weight: 500;
     color: var(--gray-600);
     white-space: nowrap;
