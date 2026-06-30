@@ -5,6 +5,9 @@ const Sale = require('../models/Sale');
 const User = require('../models/User');
 const Return = require('../models/Return');
 const AuditLog = require('../models/AuditLog');
+const ImportHistory = require('../models/ImportHistory');
+const ImportRow = require('../models/ImportRow');
+const SpecialDrug = require('../models/SpecialDrug');
 const { protect, adminOnly } = require('../middleware/auth');
 
 router.use(protect);
@@ -63,10 +66,15 @@ router.put('/notifications/me', async (req, res) => {
 // POST /api/settings/backup
 router.post('/backup', adminOnly, async (req, res) => {
   try {
-    const [medicines, sales, users] = await Promise.all([
+    const [medicines, sales, users, returns, auditLogs, importHistories, importRows, specialDrugs] = await Promise.all([
       Medicine.find().lean(),
       Sale.find().lean(),
-      User.find().select('-password').lean(),
+      User.find().select('+password +isMainAdmin').lean(),
+      Return.find().lean(),
+      AuditLog.find().lean(),
+      ImportHistory.find().lean(),
+      ImportRow.find().lean(),
+      SpecialDrug.find().lean(),
     ]);
     res.json({
       success: true,
@@ -76,6 +84,11 @@ router.post('/backup', adminOnly, async (req, res) => {
         medicines,
         sales,
         users,
+        returns,
+        auditLogs,
+        importHistories,
+        importRows,
+        specialDrugs,
       },
     });
   } catch (error) {
@@ -84,59 +97,57 @@ router.post('/backup', adminOnly, async (req, res) => {
   }
 });
 
-const normalizeText = (value = "") =>
-  String(value).trim().toLowerCase().replace(/\s+/g, " ");
-
-const normalizeBatch = (value = "") =>
-  String(value).trim().toUpperCase().replace(/\s+/g, "");
-
-const toDateKey = (value) => {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-};
-
 // POST /api/settings/restore
 router.post('/restore', adminOnly, async (req, res) => {
+  const modelMap = {
+    medicines: { model: Medicine, required: true },
+    users: { model: User, required: false },
+    sales: { model: Sale, required: false },
+    returns: { model: Return, required: false },
+    specialDrugs: { model: SpecialDrug, required: false },
+    auditLogs: { model: AuditLog, required: false },
+    importHistories: { model: ImportHistory, required: false },
+    importRows: { model: ImportRow, required: false },
+  };
+
   try {
-    const { medicines = [] } = req.body || {};
-    if (!Array.isArray(medicines)) {
-      return res.status(400).json({ success: false, message: 'Invalid restore payload.' });
-    }
-    let restored = 0;
-    for (const med of medicines) {
-      if (!med?.name) continue;
+    const counts = {};
+    for (const [key, { model, required }] of Object.entries(modelMap)) {
+      const docs = req.body[key];
+      if (!Array.isArray(docs)) {
+        if (required) {
+          return res.status(400).json({ success: false, message: `Invalid restore payload: "${key}" is missing or not an array.` });
+        }
+        counts[key] = { skipped: true, count: 0 };
+        continue;
+      }
+      if (docs.length === 0) {
+        counts[key] = { count: 0 };
+        continue;
+      }
 
-      const name = String(med.name).trim();
-      const batchNumber = String(med.batchNumber || "restored-batch").trim();
-      const expiryDate = med.expiryDate ? new Date(med.expiryDate) : new Date();
-      const normalizedName = normalizeText(name);
-      const productKey = normalizedName;
-      const batchNumberNormalized = normalizeBatch(batchNumber);
-      const expiryDateKey = toDateKey(expiryDate);
-
-      await Medicine.findOneAndUpdate(
-        { productKey, batchNumberNormalized, expiryDateKey },
-        {
-          name,
-          normalizedName,
-          productKey,
-          price: Number(med.price || 0),
-          buyingPrice: Number(med.buyingPrice || med.price || 0),
-          batchNumber,
-          batchNumberNormalized,
-          stock: Number(med.stock || 0),
-          expiryDate,
-          expiryDateKey,
-          status: med.status || "active",
-          lastImportId: med.lastImportId || null,
-        },
-        { upsert: true, new: true, runValidators: true },
-      );
-      restored++;
+      try {
+        const result = await model.insertMany(docs, { ordered: false });
+        counts[key] = { count: result.length };
+      } catch (insertErr) {
+        // insertMany with ordered: false will throw a BulkWriteError
+        // but still inserts non-conflicting documents.
+        // Count how many were actually written.
+        const inserted = insertErr?.insertedDocs?.length ?? 0;
+        const msg = insertErr?.message ?? "";
+        const writeErrors = insertErr?.writeErrors?.length ?? 0;
+        counts[key] = { count: inserted, writeErrors };
+        if (inserted === 0) {
+          console.error(`Restore error for ${key}:`, msg.slice(0, 300));
+        }
+      }
     }
-    res.json({ success: true, message: `Restore completed. Medicines restored: ${restored}.` });
+
+    res.json({
+      success: true,
+      message: "Restore completed.",
+      counts,
+    });
   } catch (error) {
     console.error("Restore error:", error);
     res.status(500).json({ success: false, message: "Failed to restore backup." });
@@ -156,8 +167,11 @@ router.post('/danger/delete-all-data', adminOnly, async (req, res) => {
       Medicine.deleteMany({}),
       Return.deleteMany({}),
       AuditLog.deleteMany({}),
+      ImportHistory.deleteMany({}),
+      ImportRow.deleteMany({}),
+      SpecialDrug.deleteMany({}),
     ]);
-    res.json({ success: true, message: 'All operational data (Sales, Medicines, Returns, Logs) deleted. Users preserved.' });
+    res.json({ success: true, message: 'All operational data deleted. Users preserved.' });
   } catch (error) {
     console.error('Delete all data error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete data.' });
