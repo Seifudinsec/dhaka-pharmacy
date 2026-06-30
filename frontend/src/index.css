@@ -741,6 +741,12 @@ body {
     font-weight: 700;
 }
 
+@media (min-width: 1024px) {
+    .greeting-mobile {
+        font-size: 16px;
+    }
+}
+
 .header-inline-icon {
     margin-right: 6px;
     color: var(--primary);
