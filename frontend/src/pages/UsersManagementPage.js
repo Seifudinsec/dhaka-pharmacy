@@ -977,7 +977,7 @@ const UsersManagementPage = () => {
                       className={`form-input${deleteError ? " input-error" : ""}`}
                     />
                     {deleteError && (
-                      <div className="input-error-text">{deleteError}</div>
+                      <div className="form-error">{deleteError}</div>
                     )}
                   </div>
               </div>
