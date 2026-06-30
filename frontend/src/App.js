@@ -188,6 +188,13 @@ const AppLayout = ({ theme, setTheme }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    return "Good evening";
+  };
+
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
@@ -274,7 +281,7 @@ const AppLayout = ({ theme, setTheme }) => {
                 flexShrink: 0,
               }}
             />
-            <span className="greeting-mobile">Hi, {user?.username || 'User'}</span>
+            <span className="greeting-mobile">{getGreeting()}, <strong>{user?.username || 'User'}</strong></span>
             <h1 className="page-title">
               <AppIcon
                 icon={currentPage?.icon || faGear}

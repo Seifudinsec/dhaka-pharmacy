@@ -62,23 +62,14 @@ export default function Dashboard() {
   return (
     <div>
       <div className="card" style={{ marginBottom: 16 }}>
-        <div
-          className="card-body"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <h2 style={{ marginBottom: 4 }}>
+        <div className="card-body dashboard-head-card">
+          <div className="dashboard-head-text">
+            <h2 className="dashboard-head-title">
               {isAdmin
                 ? "Pharmacy Analytics Dashboard"
                 : "Pharmacy Operations Dashboard"}
             </h2>
-            <p style={{ color: "var(--gray-600)", fontSize: 13 }}>
+            <p className="dashboard-head-sub">
               {isAdmin
                 ? "Monitor financial performance, inventory health, and sales analytics."
                 : "Track inventory status, alerts, and daily operations."}
