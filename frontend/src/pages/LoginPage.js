@@ -15,6 +15,14 @@ export default function LoginPage() {
   const [form, setForm] = useState({ username: "", password: "" });
   const [error, setError] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const demoAccounts = [
+    { label: "Admin", username: "demo-admin", password: "DemoAdmin2026!" },
+    {
+      label: "Pharmacist",
+      username: "demo-pharmacist",
+      password: "DemoPharmacy2026!",
+    },
+  ];
 
   useEffect(() => {
     if (isAuthenticated) navigate("/");
@@ -172,6 +180,32 @@ export default function LoginPage() {
                 </span>
               </button>
             </form>
+
+            <section className="demo-access" aria-label="Demo account credentials">
+              <h2>RECRUITER DEMO ACCESS</h2>
+              <p>Choose a role to fill in its public demo credentials.</p>
+              <div className="demo-account-list">
+                {demoAccounts.map((account) => (
+                  <button
+                    key={account.username}
+                    type="button"
+                    className="demo-account-btn"
+                    disabled={loading}
+                    onClick={() => {
+                      setError("");
+                      setForm({
+                        username: account.username,
+                        password: account.password,
+                      });
+                    }}
+                  >
+                    <strong>{account.label}</strong>
+                    <span>{account.username} / {account.password}</span>
+                  </button>
+                ))}
+              </div>
+              <small>These shared accounts are for isolated demo environments only.</small>
+            </section>
           </div>
         </div>
       </div>
@@ -276,6 +310,78 @@ export default function LoginPage() {
         /* ── Card body ── */
         .glitch-card-body {
           padding: 1.7rem;
+        }
+
+        .demo-access {
+          margin-top: 1.6rem;
+          padding-top: 1.2rem;
+          border-top: 1px solid rgba(0, 242, 234, 0.2);
+          color: #93a4b8;
+          font-family: var(--gf-font);
+        }
+
+        .demo-access h2 {
+          margin: 0 0 0.45rem;
+          color: var(--gf-primary);
+          font-size: 0.78rem;
+          letter-spacing: 0.08em;
+        }
+
+        .demo-access p,
+        .demo-access small {
+          font-size: 0.7rem;
+          line-height: 1.5;
+        }
+
+        .demo-access p {
+          margin: 0 0 0.8rem;
+        }
+
+        .demo-access small {
+          display: block;
+          margin-top: 0.7rem;
+          color: #eab308;
+        }
+
+        .demo-account-list {
+          display: grid;
+          gap: 0.5rem;
+        }
+
+        .demo-account-btn {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+          width: 100%;
+          padding: 0.65rem 0.75rem;
+          border: 1px solid rgba(0, 242, 234, 0.25);
+          border-radius: 6px;
+          background: rgba(0, 242, 234, 0.04);
+          color: var(--gf-text);
+          text-align: left;
+          font-family: var(--gf-font);
+          cursor: pointer;
+        }
+
+        .demo-account-btn:hover,
+        .demo-account-btn:focus-visible {
+          border-color: var(--gf-primary);
+          outline: none;
+        }
+
+        .demo-account-btn:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+        }
+
+        .demo-account-btn strong {
+          color: var(--gf-primary);
+          font-size: 0.72rem;
+        }
+
+        .demo-account-btn span {
+          overflow-wrap: anywhere;
+          font-size: 0.65rem;
         }
 
         /* ============================================================
