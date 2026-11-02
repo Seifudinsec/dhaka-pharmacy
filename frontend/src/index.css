@@ -2449,38 +2449,85 @@ body {
         background: #172a3d;
     }
 
+    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid .dashboard-metric--catalog,
+    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid .dashboard-metric--stock {
+        background: #26354a;
+    }
+
+    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid .dashboard-metric--low,
+    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid .dashboard-metric--expiring {
+        background: #403821;
+    }
+
+    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid .dashboard-metric--out,
+    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid .dashboard-metric--expired {
+        background: #472b30;
+    }
+
+    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid .dashboard-metric--sales {
+        background: #203b39;
+    }
+
+    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid .dashboard-metric--profit {
+        background: #293c2c;
+    }
+
+    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid .dashboard-metric--revenue {
+        background: #2a3150;
+    }
+
+    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid .dashboard-metric--inventory-value {
+        background: #382d48;
+    }
+
     [data-theme="dark"] .dashboard-page .dashboard-metric--catalog,
     [data-theme="dark"] .dashboard-page .dashboard-metric--stock {
-        background: #26354a;
+        --dashboard-metric-accent: #a9cbff;
     }
 
     [data-theme="dark"] .dashboard-page .dashboard-metric--low,
     [data-theme="dark"] .dashboard-page .dashboard-metric--expiring {
-        background: #403821;
+        --dashboard-metric-accent: #ffd278;
     }
 
     [data-theme="dark"] .dashboard-page .dashboard-metric--out {
-        background: #472b30;
+        --dashboard-metric-accent: #ffaaa3;
     }
 
     [data-theme="dark"] .dashboard-page .dashboard-metric--expired {
-        background: #402531;
+        --dashboard-metric-accent: #ffadb9;
     }
 
     [data-theme="dark"] .dashboard-page .dashboard-metric--sales {
-        background: #203b39;
+        --dashboard-metric-accent: #89e0d1;
     }
 
     [data-theme="dark"] .dashboard-page .dashboard-metric--profit {
-        background: #293c2c;
+        --dashboard-metric-accent: #a6e5a5;
     }
 
     [data-theme="dark"] .dashboard-page .dashboard-metric--revenue {
-        background: #2a3150;
+        --dashboard-metric-accent: #c0c6ff;
     }
 
     [data-theme="dark"] .dashboard-page .dashboard-metric--inventory-value {
-        background: #382d48;
+        --dashboard-metric-accent: #d4b8ff;
+    }
+
+    [data-theme="dark"] .dashboard-page .metric-icon {
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(8, 17, 29, 0.42);
+        color: var(--dashboard-metric-accent);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    [data-theme="dark"] .dashboard-page .metric-icon svg {
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.28));
+    }
+
+    [data-theme="dark"] .dashboard-page .dashboard-eyebrow,
+    [data-theme="dark"] .dashboard-page .dashboard-section-kicker {
+        color: #a1b7b2;
     }
 
     [data-theme="dark"] .dashboard-page .metric-value,
