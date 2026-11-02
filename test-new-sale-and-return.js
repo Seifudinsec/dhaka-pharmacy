@@ -1,7 +1,15 @@
 // Test script to create a new sale and then test return functionality
 const axios = require("axios");
 
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = process.env.API_BASE || "http://localhost:5001/api";
+const username = process.env.TEST_USERNAME;
+const password = process.env.TEST_PASSWORD;
+
+if (process.env.ALLOW_MUTATING_TESTS !== "true" || !username || !password) {
+  throw new Error(
+    "Set ALLOW_MUTATING_TESTS=true, TEST_USERNAME, and TEST_PASSWORD for a disposable test database.",
+  );
+}
 
 async function testNewSaleAndReturn() {
   try {
@@ -10,8 +18,8 @@ async function testNewSaleAndReturn() {
     // Step 1: Login to get token
     console.log("\n1. Testing login...");
     const loginResponse = await axios.post(`${API_BASE}/auth/login`, {
-      username: "admin",
-      password: "admin123",
+      username,
+      password,
     });
 
     const token = loginResponse.data.token;
