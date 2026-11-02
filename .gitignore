@@ -4,6 +4,8 @@
 .env.development.local
 .env.test.local
 .env.production.local
+**/.env*
+!**/.env.example
 
 # Dependency directories
 node_modules/
