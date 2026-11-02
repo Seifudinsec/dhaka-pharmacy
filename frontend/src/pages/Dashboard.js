@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   faBan,
@@ -12,6 +12,8 @@ import {
   faBox,
   faExclamationTriangle,
   faArrowsRotate,
+  faChartBar,
+  faRotateLeft,
 } from "@fortawesome/free-solid-svg-icons";
 import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
@@ -145,7 +147,7 @@ function StockHealthChart({ stockHealth = {} }) {
         >
           <svg viewBox="0 0 180 180" aria-hidden="true">
             <circle className="dashboard-donut-track" cx="90" cy="90" r="72" />
-            {segments.map((segment) =>
+            {segments.map((segment, index) =>
               segment.value > 0 ? (
                 <circle
                   key={segment.key}
@@ -158,6 +160,11 @@ function StockHealthChart({ stockHealth = {} }) {
                   strokeDasharray={`${segment.length} ${circumference - segment.length}`}
                   strokeDashoffset={-segment.offset}
                   className="dashboard-donut-segment"
+                  style={{
+                    "--segment-length": segment.length,
+                    "--segment-gap": circumference - segment.length,
+                    "--segment-delay": `${index * 70}ms`,
+                  }}
                 />
               ) : null,
             )}
@@ -165,7 +172,7 @@ function StockHealthChart({ stockHealth = {} }) {
           <div className="dashboard-donut-center">
             <span>Total</span>
             <strong>{total.toLocaleString()}</strong>
-            <small>medicines</small>
+            <small>batches</small>
           </div>
         </div>
         <ul className="dashboard-chart-legend">
@@ -196,7 +203,11 @@ function StockHealthChart({ stockHealth = {} }) {
 
 function WeeklySalesChart({ salesTrend = [] }) {
   const maxTotal = Math.max(...salesTrend.map((day) => Number(day.total || 0)), 0);
-  const scaleMax = maxTotal || 1;
+  const { max: scaleMax, step } = getSalesChartScale(maxTotal);
+  const chartTotal = salesTrend.reduce(
+    (sum, day) => sum + Number(day.total || 0),
+    0,
+  );
 
   return (
     <section className="dashboard-chart-card dashboard-chart-sales" aria-labelledby="weekly-sales-title">
@@ -205,51 +216,64 @@ function WeeklySalesChart({ salesTrend = [] }) {
           <span className="dashboard-section-kicker">SALES ACTIVITY</span>
           <h2 id="weekly-sales-title">Sales this week</h2>
         </div>
-        <span className="dashboard-chart-period">Last 7 days</span>
+        <div className="dashboard-sales-summary">
+          <strong>{formatKes(chartTotal)}</strong>
+          <span>Last 7 days</span>
+        </div>
       </div>
       <div
         className="dashboard-sales-chart"
-        role="img"
+        role="group"
         aria-label={`Daily sales revenue for the last seven days. Highest day: ${formatKes(maxTotal)}.`}
       >
         <div className="dashboard-chart-y-axis" aria-hidden="true">
-          {[1, 0.75, 0.5, 0.25, 0].map((fraction) => (
-            <span key={fraction}>
-              {maxTotal ? formatKes(maxTotal * fraction) : formatKes(0)}
+          {[4, 3, 2, 1, 0].map((tick) => (
+            <span key={tick}>
+              {formatCompactKes(step * tick)}
             </span>
           ))}
         </div>
         <div className="dashboard-sales-columns">
-          {[1, 0.75, 0.5, 0.25, 0].map((fraction) => (
+          {[4, 3, 2, 1, 0].map((tick) => (
             <span
-              key={fraction}
+              key={tick}
               className="dashboard-chart-gridline"
-              style={{ bottom: `${fraction * 100}%` }}
+              style={{ bottom: `${(tick / 4) * 100}%` }}
               aria-hidden="true"
             />
           ))}
-          {salesTrend.map((day) => {
+          {salesTrend.map((day, index) => {
             const value = Number(day.total || 0);
             const dayDate = new Date(`${day.date}T12:00:00`);
             const label = Number.isNaN(dayDate.getTime())
               ? day.date
               : format(dayDate, "EEE");
+            const fullDate = Number.isNaN(dayDate.getTime())
+              ? day.date
+              : format(dayDate, "EEEE, dd MMM");
             const height = value ? Math.max((value / scaleMax) * 100, 4) : 0;
 
             return (
               <div
                 className="dashboard-sales-column"
                 key={day.date}
-                title={`${format(dayDate, "EEEE, dd MMM")}: ${formatKes(value)} · ${day.count || 0} sales`}
+                role="img"
+                tabIndex={0}
+                aria-label={`${fullDate}: ${formatKes(value)}, ${day.count || 0} sales`}
+                style={{ "--bar-delay": `${180 + index * 55}ms` }}
               >
                 <div className="dashboard-sales-bar-track">
                   <div
                     className="dashboard-sales-bar"
                     style={{ height: `${height}%` }}
                   />
+                  <span className="dashboard-sales-tooltip" aria-hidden="true">
+                    <strong>{formatKes(value)}</strong>
+                    <small>{day.count || 0} sales · {fullDate}</small>
+                  </span>
                 </div>
                 <span className="dashboard-sales-day">{label}</span>
-                <span className="dashboard-sales-value">{formatKes(value)}</span>
+                <span className="dashboard-sales-value">{formatCompactKes(value)}</span>
               </div>
             );
           })}
@@ -262,11 +286,34 @@ function WeeklySalesChart({ salesTrend = [] }) {
 export default function Dashboard() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
+  const [samplePreview, setSamplePreview] = useState(
+    () => new URLSearchParams(window.location.search).get("preview") === "sample",
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const navigate = useNavigate();
   const isAdmin = user?.role === "admin" || user?.role === "main_admin";
   const showLoader = useDelayedLoading(loading);
+  const isInitialLoading = loading && !stats && !samplePreview;
+  const showSkeletons = isInitialLoading && showLoader;
+  const sampleStats = useMemo(() => createSampleDashboardStats(), []);
+  const displayStats = samplePreview ? sampleStats : stats;
+  const setSamplePreviewMode = (enabled) => {
+    setSamplePreview(enabled);
+    const url = new URL(window.location.href);
+    if (enabled) url.searchParams.set("preview", "sample");
+    else url.searchParams.delete("preview");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  };
+  const metricLink = (path, metric) => (
+    <button
+      type="button"
+      className="dashboard-metric-link"
+      onClick={() => navigate(path)}
+    >
+      {metric}
+    </button>
+  );
 
   const fetchStats = useCallback(async () => {
     setRefreshing(true);
@@ -298,7 +345,10 @@ export default function Dashboard() {
   }, [fetchStats]);
 
   return (
-    <div className="dashboard-page">
+    <div
+      className={`dashboard-page${isInitialLoading ? "" : " dashboard-page--loaded"}`}
+      aria-busy={isInitialLoading}
+    >
       <div className="card dashboard-welcome dashboard-enter" style={{ marginBottom: 16 }}>
         <div className="card-body dashboard-head-card">
           <div className="dashboard-head-text">
@@ -338,158 +388,191 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {samplePreview && (
+        <div className="dashboard-sample-banner" role="status">
+          <strong>Sample data preview</strong>
+          <span>Illustrative dashboard data only. Nothing has been saved to the pharmacy database.</span>
+        </div>
+      )}
+
       <section className="dashboard-overview-panel dashboard-enter" aria-labelledby="dashboard-overview-title">
         <div className="dashboard-section-heading">
           <div>
-            <span className="dashboard-section-kicker">LIVE SNAPSHOT</span>
-            <h2 id="dashboard-overview-title">Pharmacy Sales Results</h2>
+            <span className="dashboard-section-kicker">
+              {samplePreview ? "SAMPLE PREVIEW" : "LIVE SNAPSHOT"}
+            </span>
+            <h2 id="dashboard-overview-title">Inventory &amp; sales snapshot</h2>
           </div>
-          <span className="dashboard-updated-label">
-            <span className="dashboard-live-dot" />
-            Current overview
-          </span>
+          <div className="dashboard-snapshot-actions">
+            <span className="dashboard-updated-label">
+              <span className={samplePreview ? "dashboard-sample-dot" : "dashboard-live-dot"} />
+              {samplePreview ? "Sample preview" : "Current overview"}
+            </span>
+            <button
+              type="button"
+              className="dashboard-preview-button"
+              onClick={() => setSamplePreviewMode(!samplePreview)}
+              aria-pressed={samplePreview}
+            >
+              <AppIcon icon={samplePreview ? faRotateLeft : faChartBar} />
+              {samplePreview ? "Show live data" : "Preview sample data"}
+            </button>
+          </div>
         </div>
-      {showLoader ? (
-        <SkeletonMetricRow count={isAdmin ? 8 : 6} gridClassName="stats-grid dashboard-metrics-grid" />
-      ) : (
-        <div className="stats-grid dashboard-metrics-grid">
+      {showSkeletons ? (
+        <SkeletonMetricRow
+          count={isAdmin ? 8 : 7}
+          gridClassName={`stats-grid dashboard-metrics-grid dashboard-metrics-grid--${isAdmin ? "admin" : "pharmacist"}`}
+        />
+      ) : isInitialLoading ? null : (
+        <div
+          className={`stats-grid dashboard-metrics-grid dashboard-metrics-grid--${isAdmin ? "admin" : "pharmacist"}`}
+        >
           {/* Common metrics for all roles */}
-          <div
-            onClick={() => navigate("/medicines")}
-            style={{ cursor: "pointer" }}
-          >
+          {metricLink(
+            "/medicines",
             <MetricCard
               icon={faPills}
-              label="Total Medicines"
-              value={stats?.totalMedicines}
-              sub="In database"
+              label="Medicine Batches"
+              value={displayStats?.totalMedicines}
+              sub="In inventory"
               tone="primary"
               className="dashboard-metric--catalog"
-            />
-          </div>
-          <div
-            onClick={() => navigate("/inventory?filter=low_stock")}
-            style={{ cursor: "pointer" }}
-          >
+            />,
+          )}
+          {metricLink(
+            "/inventory?filter=low_stock",
             <MetricCard
               icon={faTriangleExclamation}
               label="Low Stock"
-              value={stats?.lowStockCount}
+              value={displayStats?.lowStockCount}
               sub="Below 10 units"
               tone="warning"
               className="dashboard-metric--low"
-            />
-          </div>
-          <div
-            onClick={() => navigate("/inventory?filter=out_of_stock")}
-            style={{ cursor: "pointer" }}
-          >
+            />,
+          )}
+          {metricLink(
+            "/inventory?filter=out_of_stock",
             <MetricCard
               icon={faCircleExclamation}
               label="Out of Stock"
-              value={stats?.outOfStockCount}
+              value={displayStats?.outOfStockCount}
               sub="Zero units left"
               tone="danger"
               className="dashboard-metric--out"
-            />
-          </div>
-          <div
-            onClick={() => navigate("/inventory?filter=expired")}
-            style={{ cursor: "pointer" }}
-          >
+            />,
+          )}
+          {metricLink(
+            "/inventory?filter=expired",
             <MetricCard
               icon={faBan}
               label="Expired"
-              value={stats?.expiredCount}
+              value={displayStats?.expiredCount}
               sub="Past expiry date"
               tone="danger"
               className="dashboard-metric--expired"
-            />
-          </div>
+            />,
+          )}
 
           {/* Role-specific metrics */}
-          <div onClick={() => navigate("/sales")} style={{ cursor: "pointer" }}>
+          {metricLink(
+            "/sales",
             <MetricCard
               icon={faFileInvoiceDollar}
               label="Today's Sales"
               value={
                 isAdmin
-                  ? `KES ${(stats?.todaySales?.total || 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`
-                  : `${stats?.todaySales?.count || 0} transaction${stats?.todaySales?.count !== 1 ? "s" : ""}`
+                  ? `KES ${(displayStats?.todaySales?.total || 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`
+                  : `${displayStats?.todaySales?.count || 0} transaction${displayStats?.todaySales?.count !== 1 ? "s" : ""}`
               }
               sub={
                 isAdmin
-                  ? `${stats?.todaySales?.count || 0} transaction${stats?.todaySales?.count !== 1 ? "s" : ""}`
+                  ? `${displayStats?.todaySales?.count || 0} transaction${displayStats?.todaySales?.count !== 1 ? "s" : ""}`
                   : "Completed today"
               }
               tone="success"
               className="dashboard-metric--sales"
-            />
-          </div>
+            />,
+          )}
 
           {isAdmin && (
             <>
-              <MetricCard
+              {metricLink(
+                "/reports",
+                <MetricCard
                 icon={faChartLine}
                 label="Today's Profit"
-                value={`KES ${(stats?.todayProfit || 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`}
+                value={`KES ${(displayStats?.todayProfit || 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`}
                 sub="From completed sales"
                 tone="success"
                 className="dashboard-metric--profit"
-              />
-              <MetricCard
+                />,
+              )}
+              {metricLink(
+                "/reports",
+                <MetricCard
                 icon={faCoins}
                 label="Total Revenue"
-                value={`KES ${(stats?.totalRevenue || 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`}
+                value={`KES ${(displayStats?.totalRevenue || 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`}
                 sub="All time"
                 tone="primary"
                 className="dashboard-metric--revenue"
-              />
-              <MetricCard
+                />,
+              )}
+              {metricLink(
+                "/inventory",
+                <MetricCard
                 icon={faBox}
                 label="Inventory Value"
-                value={`KES ${(stats?.inventoryValue || 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`}
+                value={`KES ${(displayStats?.inventoryValue || 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`}
                 sub="Current stock value"
                 tone="info"
                 className="dashboard-metric--inventory-value"
-              />
+                />,
+              )}
             </>
           )}
 
           {!isAdmin && (
             <>
-              <MetricCard
+              {metricLink(
+                "/inventory",
+                <MetricCard
                 icon={faExclamationTriangle}
                 label="Expiring Soon"
-                value={stats?.expiringSoonCount || 0}
+                value={displayStats?.expiringSoonCount || 0}
                 sub="Next 30 days"
                 tone="warning"
                 className="dashboard-metric--expiring"
-              />
-              <MetricCard
+                />,
+              )}
+              {metricLink(
+                "/inventory",
+                <MetricCard
                 icon={faBox}
                 label="Total Stock"
-                value={stats?.totalStockUnits || 0}
+                value={displayStats?.totalStockUnits || 0}
                 sub="Units in inventory"
                 tone="info"
                 className="dashboard-metric--stock"
-              />
+                />,
+              )}
             </>
           )}
         </div>
       )}
       </section>
 
-      {!showLoader && (
+      {!isInitialLoading && (
         <div className="dashboard-charts-grid dashboard-enter">
-          <StockHealthChart stockHealth={stats?.stockHealth} />
-          <WeeklySalesChart salesTrend={stats?.salesTrend} />
+          <StockHealthChart stockHealth={displayStats?.stockHealth} />
+          <WeeklySalesChart salesTrend={displayStats?.salesTrend} />
         </div>
       )}
 
-      {showLoader ? (
+      {showSkeletons ? (
         <SkeletonCard lines={4} showHeader={true} />
-      ) : isAdmin ? (
+      ) : isInitialLoading ? null : isAdmin ? (
         <div className="card dashboard-panel dashboard-enter" style={{ marginBottom: 16 }}>
           <div className="card-header dashboard-panel-header">
             <div>
@@ -508,6 +591,7 @@ export default function Dashboard() {
           >
             <div className="dashboard-insight dashboard-insight-profit">
               <h3
+                className="dashboard-insight-title--profit"
                 style={{
                   marginBottom: 8,
                   color: "var(--secondary)",
@@ -516,12 +600,12 @@ export default function Dashboard() {
               >
                 Top Potential Profit (in stock)
               </h3>
-              {!stats?.topProfitProducts?.length ? (
+              {!displayStats?.topProfitProducts?.length ? (
                 <p style={{ fontSize: 13, color: "var(--gray-500)" }}>
                   No profit-leading products yet.
                 </p>
               ) : (
-                stats.topProfitProducts.map((p) => (
+                displayStats.topProfitProducts.map((p) => (
                   <div
                     key={p._id}
                     style={{
@@ -543,6 +627,7 @@ export default function Dashboard() {
             </div>
             <div className="dashboard-insight dashboard-insight-risk">
               <h3
+                className="dashboard-insight-title--risk"
                 style={{
                   marginBottom: 8,
                   color: "var(--danger)",
@@ -551,18 +636,18 @@ export default function Dashboard() {
               >
                 Potential Loss Items (in stock)
               </h3>
-              {stats?.totalPotentialLoss > 0 && (
-                <p style={{ fontSize: 13, color: "var(--danger-700)", marginBottom: 10, fontWeight: 600 }}>
-                  Total at risk: KES {stats.totalPotentialLoss.toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+              {displayStats?.totalPotentialLoss > 0 && (
+                <p className="dashboard-total-risk" style={{ fontSize: 13, marginBottom: 10, fontWeight: 600 }}>
+                  Total at risk: KES {displayStats.totalPotentialLoss.toLocaleString("en-KE", { minimumFractionDigits: 2 })}
                 </p>
               )}
-              {!stats?.potentialLossItems?.length ? (
+              {!displayStats?.potentialLossItems?.length ? (
                 <p style={{ fontSize: 13, color: "var(--gray-500)" }}>
                   No loss-making products found.
                 </p>
               ) : (
                 <>
-                  {stats.potentialLossItems.map((p) => {
+                  {displayStats.potentialLossItems.map((p) => {
                     const lossLabel =
                       p.lossType === "EXPIRED"
                         ? { text: "Expired", color: "var(--danger-700)" }
@@ -582,21 +667,12 @@ export default function Dashboard() {
                         <span>
                           {p.name} (x{p.stock})
                           <span
-                            style={{
-                              display: "inline-block",
-                              marginLeft: 6,
-                              padding: "0 6px",
-                              fontSize: 10,
-                              fontWeight: 600,
-                              borderRadius: 4,
-                              background: lossLabel.color,
-                              color: "#fff",
-                            }}
+                            className={`dashboard-loss-tag dashboard-loss-tag--${p.lossType.toLowerCase()}`}
                           >
                             {lossLabel.text}
                           </span>
                         </span>
-                        <strong style={{ color: lossLabel.color }}>
+                        <strong className={`dashboard-loss-amount dashboard-loss-amount--${p.lossType.toLowerCase()}`}>
                           KES {Number(p.lossAmount).toFixed(2)}
                         </strong>
                       </div>
@@ -626,6 +702,7 @@ export default function Dashboard() {
           >
             <div className="dashboard-insight dashboard-insight-risk">
               <h3
+                className="dashboard-insight-title--stock"
                 style={{
                   marginBottom: 8,
                   color: "var(--warning)",
@@ -634,12 +711,12 @@ export default function Dashboard() {
               >
                 Critical Stock Levels
               </h3>
-              {!stats?.criticalStockItems?.length ? (
+              {!displayStats?.criticalStockItems?.length ? (
                 <p style={{ fontSize: 13, color: "var(--gray-500)" }}>
                   All stock levels are healthy.
                 </p>
               ) : (
-                stats.criticalStockItems.map((p) => (
+                displayStats.criticalStockItems.map((p) => (
                   <div
                     key={p._id}
                     style={{
@@ -659,6 +736,7 @@ export default function Dashboard() {
             </div>
             <div className="dashboard-insight dashboard-insight-expired">
               <h3
+                className="dashboard-insight-title--expired"
                 style={{
                   marginBottom: 8,
                   color: "var(--danger)",
@@ -667,12 +745,12 @@ export default function Dashboard() {
               >
                 Expired Items
               </h3>
-              {!stats?.expiredItems?.length ? (
+              {!displayStats?.expiredItems?.length ? (
                 <p style={{ fontSize: 13, color: "var(--gray-500)" }}>
                   No expired items found.
                 </p>
               ) : (
-                stats.expiredItems.slice(0, 5).map((p) => (
+                displayStats.expiredItems.slice(0, 5).map((p) => (
                   <div
                     key={p._id}
                     style={{
@@ -708,11 +786,11 @@ export default function Dashboard() {
           </button>
         </div>
         <div className="table-wrap table-responsive-cards dashboard-table-wrap">
-          {showLoader ? (
+          {showSkeletons ? (
             <div className="loader-fade-in">
               <SkeletonTable rows={5} cols={isAdmin ? 4 : 3} />
             </div>
-          ) : !stats?.recentSales?.length ? (
+          ) : isInitialLoading ? null : !displayStats?.recentSales?.length ? (
             <div className="empty-state">
               <div className="empty-icon">
                 <AppIcon icon={faMoneyBillTrendUp} size="xl" tone="muted" />
@@ -731,7 +809,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {stats.recentSales.map((sale) => (
+                {displayStats.recentSales.map((sale) => (
                   <tr key={sale._id}>
                     <td data-label="Date">
                       {format(new Date(sale.createdAt), "dd MMM yyyy, HH:mm")}
