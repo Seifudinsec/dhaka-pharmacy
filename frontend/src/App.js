@@ -229,11 +229,13 @@ const AppLayout = ({ theme, setTheme }) => {
   });
   const location = useLocation();
   const navigationItems = getNavigationItems(user?.role);
-  const currentPage = navigationItems.find((n) =>
-    n.exact
-      ? location.pathname === n.path
-      : location.pathname.startsWith(n.path),
-  );
+  const currentPage = navigationItems
+    .flatMap(({ items }) => items)
+    .find((item) =>
+      item.exact
+        ? location.pathname === item.path
+        : location.pathname.startsWith(item.path),
+    );
 
   useEffect(() => {
     if (!user) return;
@@ -258,7 +260,7 @@ const AppLayout = ({ theme, setTheme }) => {
     <div className="app-layout">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} theme={theme} onThemeChange={setTheme} />
       <div className="main-content">
-        <header className="page-header">
+        <header className={`page-header${location.pathname === "/" ? " page-header-dashboard" : ""}`}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, overflow: "hidden" }}>
             <button
               className="btn btn-secondary btn-icon sidebar-toggle"
