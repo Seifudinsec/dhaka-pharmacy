@@ -11,6 +11,13 @@ const connectDB = async () => {
 };
 
 const seedData = async () => {
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (!adminPassword) {
+    throw new Error(
+      'SEED_ADMIN_PASSWORD is required. Set it in backend/.env before running the destructive seed.',
+    );
+  }
+
   await connectDB();
 
   // Clear existing data
@@ -20,14 +27,14 @@ const seedData = async () => {
   const existingAdmin = await User.findOne({ isMainAdmin: true });
   if (!existingAdmin) {
     const salt = await bcrypt.genSalt(12);
-    const hashedPassword = await bcrypt.hash('admin123', salt);
+    const hashedPassword = await bcrypt.hash(adminPassword, salt);
     await User.create({
       username: 'admin',
       password: hashedPassword,
       role: 'main_admin',
       isMainAdmin: true,
     });
-    console.log('✅ Admin user created: admin / admin123');
+    console.log('✅ Admin user created with the configured seed password.');
   } else {
     console.log('ℹ️  Main Admin already exists. Skipping admin creation.');
   }
