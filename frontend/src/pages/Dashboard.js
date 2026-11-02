@@ -38,6 +38,81 @@ const formatKes = (value) =>
     maximumFractionDigits: 2,
   })}`;
 
+const formatCompactKes = (value) =>
+  `KES ${Number(value || 0).toLocaleString("en-KE", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  })}`;
+
+const createSampleDashboardStats = () => {
+  const salesTrend = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+    const totals = [18240, 24680, 19850, 31240, 27560, 35890, 42560.75];
+    const counts = [11, 15, 13, 19, 17, 22, 26];
+    return { date: format(date, "yyyy-MM-dd"), total: totals[index], count: counts[index] };
+  });
+  const now = new Date();
+  const saleDate = (minutesAgo) =>
+    new Date(now.getTime() - minutesAgo * 60_000).toISOString();
+
+  return {
+    totalMedicines: 86,
+    lowStockCount: 11,
+    outOfStockCount: 6,
+    expiredCount: 5,
+    expiringSoonCount: 8,
+    totalStockUnits: 3680,
+    stockHealth: { healthy: 64, low: 11, out: 6, expired: 5 },
+    salesTrend,
+    inventoryValue: 348920,
+    totalRevenue: 1284600,
+    todaySales: { count: 26, total: 42560.75 },
+    todayProfit: 11348.2,
+    topProfitProducts: [
+      { _id: "sample-profit-1", name: "Amoxicillin 500mg", stock: 120, estimatedStockProfit: 8400 },
+      { _id: "sample-profit-2", name: "Omeprazole 20mg", stock: 85, estimatedStockProfit: 6375 },
+      { _id: "sample-profit-3", name: "Cetirizine 10mg", stock: 96, estimatedStockProfit: 4320 },
+    ],
+    potentialLossItems: [
+      { _id: "sample-loss-1", name: "Expired cough syrup", stock: 12, lossType: "EXPIRED", lossAmount: 3840 },
+      { _id: "sample-loss-2", name: "Ibuprofen 400mg", stock: 20, lossType: "BELOW_COST", lossAmount: 1200 },
+      { _id: "sample-loss-3", name: "Vitamin D drops", stock: 18, lossType: "EXPIRING_RISK", lossAmount: 1620 },
+    ],
+    totalPotentialLoss: 6660,
+    criticalStockItems: [
+      { _id: "sample-critical-1", name: "Salbutamol Inhaler", stock: 3 },
+      { _id: "sample-critical-2", name: "Ferrous Sulfate 200mg", stock: 7 },
+      { _id: "sample-critical-3", name: "ORS Sachets", stock: 9 },
+    ],
+    expiredItems: [
+      { _id: "sample-expired-1", name: "Expired cough syrup", expiryDate: "2026-10-12T00:00:00.000Z" },
+      { _id: "sample-expired-2", name: "Eye drops 10ml", expiryDate: "2026-09-28T00:00:00.000Z" },
+    ],
+    recentSales: [
+      { _id: "sample-sale-1", createdAt: saleDate(12), total: 2840, servedBy: { username: "Amina" }, items: [{ medicineName: "Amoxicillin 500mg", quantity: 2 }, { medicineName: "Paracetamol 500mg", quantity: 4 }] },
+      { _id: "sample-sale-2", createdAt: saleDate(38), total: 1650, servedBy: { username: "Daniel" }, items: [{ medicineName: "Cetirizine 10mg", quantity: 3 }] },
+      { _id: "sample-sale-3", createdAt: saleDate(71), total: 3920, servedBy: { username: "Amina" }, items: [{ medicineName: "Omeprazole 20mg", quantity: 2 }, { medicineName: "Vitamin C 500mg", quantity: 2 }, { medicineName: "ORS Sachets", quantity: 6 }] },
+      { _id: "sample-sale-4", createdAt: saleDate(126), total: 980, servedBy: { username: "Joseph" }, items: [{ medicineName: "Ibuprofen 400mg", quantity: 2 }] },
+      { _id: "sample-sale-5", createdAt: saleDate(184), total: 2240, servedBy: { username: "Daniel" }, items: [{ medicineName: "Metformin 500mg", quantity: 2 }, { medicineName: "Vitamin C 500mg", quantity: 1 }] },
+    ],
+  };
+};
+
+function getSalesChartScale(maxValue) {
+  if (!maxValue) return { max: 1, step: 0.25 };
+
+  const rawStep = maxValue / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalizedStep = rawStep / magnitude;
+  const stepSize = [1, 2, 2.5, 5, 10].find(
+    (candidate) => normalizedStep <= candidate,
+  );
+  const step = stepSize * magnitude;
+
+  return { max: step * 4, step };
+}
+
 function StockHealthChart({ stockHealth = {} }) {
   const total = STOCK_HEALTH_SEGMENTS.reduce(
     (sum, segment) => sum + Number(stockHealth[segment.key] || 0),
