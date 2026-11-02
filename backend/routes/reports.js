@@ -1,5 +1,5 @@
 const express = require("express");
-const { format } = require("date-fns");
+const { format, subMonths, subYears } = require("date-fns");
 const XLSX = require("xlsx");
 
 const { protect, adminOnly } = require("../middleware/auth");
@@ -30,6 +30,47 @@ const endOfDay = (d) => {
 
 const dateKey = (d) => format(new Date(d), "yyyy-MM-dd");
 
+const parseRangeDate = (value) => {
+  if (typeof value !== "string") return null;
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const parsed = dateOnly
+    ? new Date(
+        Number(dateOnly[1]),
+        Number(dateOnly[2]) - 1,
+        Number(dateOnly[3]),
+      )
+    : new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (
+    dateOnly &&
+    (parsed.getFullYear() !== Number(dateOnly[1]) ||
+      parsed.getMonth() + 1 !== Number(dateOnly[2]) ||
+      parsed.getDate() !== Number(dateOnly[3]))
+  ) {
+    return null;
+  }
+  return parsed;
+};
+
+const getReturnDateQuery = (start, end) => ({
+  $or: [
+    { refundDate: { $gte: start, $lte: end } },
+    {
+      $or: [{ refundDate: { $exists: false } }, { refundDate: null }],
+      createdAt: { $gte: start, $lte: end },
+    },
+  ],
+  $and: [
+    {
+      $or: [
+        { status: "approved" },
+        { status: { $exists: false } },
+      ],
+    },
+  ],
+});
+
 const getRangeBounds = ({ range, startDate, endDate }) => {
   const now = new Date();
   const todayEnd = endOfDay(now);
@@ -38,9 +79,14 @@ const getRangeBounds = ({ range, startDate, endDate }) => {
     if (!startDate || !endDate) {
       return { start: null, end: null };
     }
+    const parsedStart = parseRangeDate(startDate);
+    const parsedEnd = parseRangeDate(endDate);
+    if (!parsedStart || !parsedEnd || parsedStart > parsedEnd) {
+      return { start: null, end: null };
+    }
     return {
-      start: startOfDay(new Date(startDate)),
-      end: endOfDay(new Date(endDate)),
+      start: startOfDay(parsedStart),
+      end: endOfDay(parsedEnd),
     };
   }
 
@@ -48,14 +94,18 @@ const getRangeBounds = ({ range, startDate, endDate }) => {
     "7d": 7,
     "30d": 30,
     "90d": 90,
-    "6m": 183,
-    "1y": 365,
   };
 
-  const days = map[range] || 30;
-  const start = new Date(todayEnd);
-  start.setDate(start.getDate() - (days - 1));
-  start.setHours(0, 0, 0, 0);
+  const start =
+    range === "6m"
+      ? startOfDay(subMonths(todayEnd, 6))
+      : range === "1y"
+        ? startOfDay(subYears(todayEnd, 1))
+        : new Date(todayEnd);
+  if (map[range]) {
+    start.setDate(start.getDate() - (map[range] - 1));
+    start.setHours(0, 0, 0, 0);
+  }
 
   return { start, end: todayEnd };
 };
@@ -118,28 +168,23 @@ const chunkSums = (arr, size) => {
 };
 
 const computeRangeData = async ({ range, startDate, endDate }) => {
+  if (!["7d", "30d", "90d", "6m", "1y", "custom"].includes(range)) {
+    return { ok: false, message: "Unsupported report date range." };
+  }
+
   const { start, end } = getRangeBounds({ range, startDate, endDate });
   if (!start || !end) {
     return {
       ok: false,
-      message: "For custom range, startDate and endDate are required.",
+      message:
+        "Custom reports require valid start and end dates, with the start on or before the end.",
     };
   }
 
   // Filter by createdAt for sales and refundDate (fallback createdAt) for refunds
   const [sales, returns] = await Promise.all([
-    Sale.find({ createdAt: { $gte: start, $lte: end } })
-      .populate("servedBy", "username")
-      .lean(),
-    Return.find({
-      $or: [
-        { refundDate: { $gte: start, $lte: end } },
-        {
-          refundDate: { $exists: false },
-          createdAt: { $gte: start, $lte: end },
-        },
-      ],
-    }).lean(),
+    Sale.find({ createdAt: { $gte: start, $lte: end } }).lean(),
+    Return.find(getReturnDateQuery(start, end)).lean(),
   ]);
 
   const keys = [];
@@ -154,9 +199,15 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
   const salesCountByDay = new Map(keys.map((k) => [k, 0]));
   const refundsByDay = new Map(keys.map((k) => [k, 0]));
 
+  const excludedFullyRefunded = new Set(
+    returns
+      .filter((r) => String(r?.status || "").toLowerCase() !== "rejected")
+      .map((r) => String(r.originalSale)),
+  );
+
   // medicine-level (gross sales side)
-  const medSales = {};
-  const medReturns = {};
+  const medSales = Object.create(null);
+  const medReturns = Object.create(null);
 
   const ensureMed = (bucket, name) => {
     if (!bucket[name]) {
@@ -178,7 +229,12 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
 
     revenueByDay.set(k, round2((revenueByDay.get(k) || 0) + grossRevenue));
     profitByDay.set(k, round2((profitByDay.get(k) || 0) + grossProfit));
-    salesCountByDay.set(k, (salesCountByDay.get(k) || 0) + 1);
+    if (
+      sale.status !== "fully_refunded" ||
+      !excludedFullyRefunded.has(String(sale._id))
+    ) {
+      salesCountByDay.set(k, (salesCountByDay.get(k) || 0) + 1);
+    }
 
     for (const item of sale.items || []) {
       const medName = item.medicineName || "Unknown";
@@ -228,6 +284,13 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
   const profitTrends = keys.map((k) => round2(profitByDay.get(k) || 0));
   const salesDailyCounts = keys.map((k) => Number(salesCountByDay.get(k) || 0));
   const refundsDaily = keys.map((k) => round2(refundsByDay.get(k) || 0));
+  const dailySeries = keys.map((date, index) => ({
+    date,
+    revenue: revenueTrends[index],
+    profit: profitTrends[index],
+    sales: salesDailyCounts[index],
+    refunds: refundsDaily[index],
+  }));
 
   const totalRevenue = round2(revenueTrends.reduce((a, b) => a + b, 0));
   const totalProfit = round2(profitTrends.reduce((a, b) => a + b, 0));
@@ -235,12 +298,6 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
 
   // "Total Sales Count" rule:
   // exclude fully refunded sales if they have return records tied to them and status says fully_refunded
-  const excludedFullyRefunded = new Set(
-    returns
-      .filter((r) => String(r?.status || "").toLowerCase() !== "rejected")
-      .map((r) => String(r.originalSale)),
-  );
-
   const totalSales = sales.filter((s) => {
     if (
       s.status === "fully_refunded" &&
@@ -250,6 +307,15 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
     }
     return true;
   }).length;
+  const saleOutcomes = sales.reduce(
+    (outcomes, sale) => {
+      if (sale.status === "fully_refunded") outcomes.fullyRefunded += 1;
+      else if (sale.status === "partially_returned") outcomes.partiallyReturned += 1;
+      else outcomes.completed += 1;
+      return outcomes;
+    },
+    { completed: 0, partiallyReturned: 0, fullyRefunded: 0 },
+  );
 
   const averageSaleValue =
     totalSales > 0 ? round2(totalRevenue / totalSales) : 0;
@@ -284,13 +350,18 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
     });
   }
 
-  const topSelling = medicineNet
+  const rankedMedicines = medicineNet
     .filter((m) => m.unitsSold > 0 || m.revenue !== 0 || m.profit !== 0)
     .sort((a, b) => b.unitsSold - a.unitsSold || b.revenue - a.revenue)
-    .slice(0, 10);
+  const topSellingCount = Math.min(
+    5,
+    Math.max(1, Math.ceil(rankedMedicines.length / 2)),
+  );
+  const topSelling = rankedMedicines.slice(0, topSellingCount);
+  const topSellingNames = new Set(topSelling.map((medicine) => medicine.name));
 
   let lowPerforming = medicineNet
-    .filter((m) => m.unitsSold >= 0 && m.unitsSold < 10)
+    .filter((m) => !topSellingNames.has(m.name))
     .sort((a, b) => {
       // prioritize high refund rate, then low units
       if (b.refundRate !== a.refundRate) return b.refundRate - a.refundRate;
@@ -298,23 +369,50 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
     })
     .slice(0, 10);
 
-  // enrich low performers with stockStatus and lastSale
-  for (const med of lowPerforming) {
-    const doc = await Medicine.findOne({ name: med.name }).lean();
-    if (doc) {
-      // .lean() strips virtuals, so compute stockStatus from raw stock value
-      if (doc.stock === 0) med.stockStatus = "out_of_stock";
-      else if (doc.stock < 10) med.stockStatus = "low";
-      else med.stockStatus = "ok";
-    } else {
-      med.stockStatus = "not_found";
+  const lowPerformingNames = lowPerforming.map((medicine) => medicine.name);
+  const inventoryByName = lowPerformingNames.length
+    ? await Medicine.aggregate([
+        { $match: { name: { $in: lowPerformingNames } } },
+        {
+          $group: {
+            _id: "$name",
+            activeStock: {
+              $sum: {
+                $cond: [{ $eq: ["$status", "active"] }, "$stock", 0],
+              },
+            },
+            activeBatches: {
+              $sum: {
+                $cond: [{ $eq: ["$status", "active"] }, 1, 0],
+              },
+            },
+          },
+        },
+      ])
+    : [];
+  const stockByName = new Map(
+    inventoryByName.map((medicine) => [medicine._id, medicine]),
+  );
+  const lastSaleByMedicine = new Map();
+  for (const sale of [...sales].sort(
+    (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+  )) {
+    for (const item of sale.items || []) {
+      if (!lastSaleByMedicine.has(item.medicineName)) {
+        lastSaleByMedicine.set(item.medicineName, sale.createdAt);
+      }
     }
+  }
 
-    const lastSale = sales
-      .filter((s) => (s.items || []).some((it) => it.medicineName === med.name))
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+  for (const medicine of lowPerforming) {
+    const inventory = stockByName.get(medicine.name);
+    if (!inventory) medicine.stockStatus = "not_found";
+    else if (!inventory.activeBatches) medicine.stockStatus = "inactive";
+    else if (inventory.activeStock === 0) medicine.stockStatus = "out_of_stock";
+    else if (inventory.activeStock < 10) medicine.stockStatus = "low";
+    else medicine.stockStatus = "ok";
 
-    med.lastSale = lastSale?.createdAt;
+    medicine.lastSale = lastSaleByMedicine.get(medicine.name);
   }
 
   // growth rate over previous equivalent period (event-based)
@@ -332,17 +430,9 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
     Sale.find({
       createdAt: { $gte: startOfDay(prevStart), $lte: endOfDay(prevEnd) },
     }).lean(),
-    Return.find({
-      $or: [
-        {
-          refundDate: { $gte: startOfDay(prevStart), $lte: endOfDay(prevEnd) },
-        },
-        {
-          refundDate: { $exists: false },
-          createdAt: { $gte: startOfDay(prevStart), $lte: endOfDay(prevEnd) },
-        },
-      ],
-    }).lean(),
+    Return.find(
+      getReturnDateQuery(startOfDay(prevStart), endOfDay(prevEnd)),
+    ).lean(),
   ]);
 
   const prevRevenueFromSales = round2(
@@ -352,9 +442,35 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
     prevReturns.reduce((sum, r) => sum + getReturnRevenue(r), 0),
   );
   const prevRevenue = round2(prevRevenueFromSales - prevRefunds);
+  const previousKeys = [];
+  const previousCursor = startOfDay(prevStart);
+  for (let index = 0; index < keys.length; index += 1) {
+    previousKeys.push(dateKey(previousCursor));
+    previousCursor.setDate(previousCursor.getDate() + 1);
+  }
+  const previousRevenueByDay = new Map(previousKeys.map((key) => [key, 0]));
+  for (const sale of prevSales) {
+    const key = dateKey(sale.createdAt);
+    previousRevenueByDay.set(
+      key,
+      round2((previousRevenueByDay.get(key) || 0) + getSaleGrossRevenue(sale)),
+    );
+  }
+  for (const ret of prevReturns) {
+    const key = dateKey(getRefundDate(ret));
+    previousRevenueByDay.set(
+      key,
+      round2((previousRevenueByDay.get(key) || 0) - getReturnRevenue(ret)),
+    );
+  }
+  const previousDailySeries = keys.map((date, index) => ({
+    date,
+    revenue: round2(previousRevenueByDay.get(previousKeys[index]) || 0),
+  }));
 
+  const growthComparable = prevRevenue > 0;
   const growthRate =
-    prevRevenue !== 0
+    growthComparable
       ? round2(((totalRevenue - prevRevenue) / prevRevenue) * 100)
       : 0;
 
@@ -377,6 +493,8 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
       averageSaleValue,
       profitMargin,
       growthRate,
+      growthComparable,
+      previousRevenue: prevRevenue,
     },
     revenueTrends: {
       daily: revenueTrends,
@@ -393,6 +511,9 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
       weekly: chunkSums(salesDailyCounts, 7),
       monthly: chunkSums(salesDailyCounts, 30),
     },
+    dailySeries,
+    previousDailySeries,
+    saleOutcomes,
     topSelling,
     lowPerforming,
     refundSummary: {
@@ -402,6 +523,9 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
     },
     // Backward-compatible shape for existing frontend
     legacy: {
+      dailySeries,
+      previousDailySeries,
+      saleOutcomes,
       revenue: {
         daily: revenueTrends,
         weekly: chunkSums(revenueTrends, 7),
@@ -435,6 +559,8 @@ const computeRangeData = async ({ range, startDate, endDate }) => {
         averageSaleValue,
         profitMargin,
         growthRate,
+        growthComparable,
+        previousRevenue: prevRevenue,
       },
     },
   };
@@ -461,6 +587,10 @@ router.get("/", async (req, res) => {
       summary: computed.summary,
       revenueTrends: computed.revenueTrends,
       profitTrends: computed.profitTrends,
+      salesCounts: computed.salesCounts,
+      dailySeries: computed.dailySeries,
+      previousDailySeries: computed.previousDailySeries,
+      saleOutcomes: computed.saleOutcomes,
       topSelling: computed.topSelling,
       lowPerforming: computed.lowPerforming,
       refundSummary: computed.refundSummary,
@@ -533,6 +663,7 @@ router.get("/export", async (req, res) => {
       topSelling,
       lowPerforming,
       refundSummary,
+      dailySeries,
       range: period,
     } = computed;
 
@@ -567,14 +698,26 @@ router.get("/export", async (req, res) => {
     rows.push(["Total Refunds", summary.totalRefunds]);
     rows.push(["Profit Margin (%)", summary.profitMargin]);
     rows.push(["Average Sale Value (KES)", summary.averageSaleValue]);
-    rows.push(["Growth Rate (%)", summary.growthRate]);
+    rows.push([
+      "Revenue Growth (%)",
+      summary.growthComparable ? summary.growthRate : "N/A (no positive baseline)",
+    ]);
+    rows.push(["Previous Period Net Revenue (KES)", summary.previousRevenue]);
+    rows.push([
+      "Refund Rate (% of gross revenue)",
+      summary.grossRevenue > 0
+        ? round2((summary.totalRefunds / summary.grossRevenue) * 100)
+        : 0,
+    ]);
     rows.push([]);
 
     // Top Selling table
+    const boldRowIndexes = [0, 1, 3, 4, rows.length];
     rows.push(["Top Selling Medicines (Net Values)"]);
+    boldRowIndexes.push(rows.length);
     rows.push([
       "Medicine Name",
-      "Units Sold",
+      "Net Units",
       "Revenue (KES)",
       "Profit (KES)",
       "Margin (%)",
@@ -593,15 +736,18 @@ router.get("/export", async (req, res) => {
     rows.push([]);
 
     // Low Performing table
+    boldRowIndexes.push(rows.length);
     rows.push(["Low Performing Items"]);
+    boldRowIndexes.push(rows.length);
     rows.push([
       "Medicine Name",
-      "Units Sold",
+      "Net Units",
       "Revenue (KES)",
       "Profit (KES)",
       "Margin (%)",
+      "Refund Rate (%)",
       "Stock Status",
-      "Last Sale",
+      "Last Sale in Period",
     ]);
     for (const m of lowPerforming) {
       const stockLabel =
@@ -611,22 +757,28 @@ router.get("/export", async (req, res) => {
             ? "Low Stock"
             : m.stockStatus === "ok"
               ? "In Stock"
+              : m.stockStatus === "inactive"
+                ? "Inactive"
               : m.stockStatus === "not_found"
-                ? "Deleted"
-                : "Unknown";
+              ? "Not in Inventory"
+              : "Unknown";
       rows.push([
         m.name,
         m.unitsSold,
         round2(m.revenue),
         round2(m.profit),
         round2(m.profitMargin),
+        round2(m.refundRate),
         stockLabel,
-        m.lastSale ? format(new Date(m.lastSale), "yyyy-MM-dd") : "Never",
+        m.lastSale
+          ? format(new Date(m.lastSale), "yyyy-MM-dd")
+          : "None in period",
       ]);
     }
     rows.push([]);
 
     // Refund summary
+    boldRowIndexes.push(rows.length);
     rows.push(["Refund Summary"]);
     rows.push(["Total Refund Transactions", refundSummary.count]);
     rows.push(["Total Refunded Amount (KES)", refundSummary.totalRefunds]);
@@ -642,40 +794,22 @@ router.get("/export", async (req, res) => {
       { wch: 20 },
       { wch: 18 },
       { wch: 16 },
+      { wch: 18 },
     ];
 
     // Merge title and period rows across columns A:G
     ws["!merges"] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
     ];
 
     // Bold style helper
     const boldStyle = { font: { bold: true } };
 
     // Apply bold to notable rows
-    const boldRowIndexes = [
-      0, // title
-      1, // period
-      3, // Summary heading
-      4, // Summary columns
-      12, // Top selling heading (depends on static row layout)
-      13, // Top selling columns
-    ];
-
-    // Low-performing heading row index is dynamic
-    const lowPerfHeadingRow = 14 + topSelling.length + 1;
-    const lowPerfColumnsRow = lowPerfHeadingRow + 1;
-
-    boldRowIndexes.push(lowPerfHeadingRow, lowPerfColumnsRow);
-
-    // Refund summary heading row dynamic
-    const refundHeadingRow = lowPerfColumnsRow + lowPerforming.length + 2;
-    boldRowIndexes.push(refundHeadingRow);
-
     // Apply style to each cell in these rows if exists
     for (const r of boldRowIndexes) {
-      for (let c = 0; c <= 6; c++) {
+      for (let c = 0; c <= 7; c++) {
         const cellRef = XLSX.utils.encode_cell({ r, c });
         if (ws[cellRef]) {
           ws[cellRef].s = { ...(ws[cellRef].s || {}), ...boldStyle };
@@ -684,6 +818,26 @@ router.get("/export", async (req, res) => {
     }
 
     XLSX.utils.book_append_sheet(wb, ws, "Reports & Analytics");
+
+    const trendRows = [
+      ["Date", "Net Revenue (KES)", "Net Profit (KES)", "Sales", "Refunds (KES)"],
+      ...dailySeries.map((day) => [
+        day.date,
+        round2(day.revenue),
+        round2(day.profit),
+        Number(day.sales || 0),
+        round2(day.refunds),
+      ]),
+    ];
+    const trendsSheet = XLSX.utils.aoa_to_sheet(trendRows);
+    trendsSheet["!cols"] = [
+      { wch: 16 },
+      { wch: 22 },
+      { wch: 22 },
+      { wch: 12 },
+      { wch: 20 },
+    ];
+    XLSX.utils.book_append_sheet(wb, trendsSheet, "Daily Trends");
 
     const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
