@@ -14,6 +14,29 @@ router.get('/stats', async (req, res) => {
     todayStart.setHours(0, 0, 0, 0);
     const nextMonth = new Date();
     nextMonth.setMonth(nextMonth.getMonth() + 1);
+    const nairobiDateParts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Africa/Nairobi",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .formatToParts(now)
+      .reduce((parts, part) => {
+        if (part.type !== "literal") parts[part.type] = Number(part.value);
+        return parts;
+      }, {});
+    const nairobiTodayUtc = Date.UTC(
+      nairobiDateParts.year,
+      nairobiDateParts.month - 1,
+      nairobiDateParts.day,
+    );
+    const salesTrendStart = new Date(nairobiTodayUtc - 6 * 86400000 - 3 * 3600000);
+    const salesTrendEnd = new Date(nairobiTodayUtc + 21 * 3600000);
+    const salesTrendKeys = Array.from({ length: 7 }, (_, index) =>
+      new Date(nairobiTodayUtc - (6 - index) * 86400000)
+        .toISOString()
+        .slice(0, 10),
+    );
 
     const [
       totalMedicines,
@@ -32,6 +55,8 @@ router.get('/stats', async (req, res) => {
       criticalStockItems,
       expiredItems,
       totalPotentialLossAgg,
+      stockHealthAgg,
+      salesTrendAgg,
     ] = await Promise.all([
       Medicine.countDocuments({ status: 'active' }),
       Medicine.countDocuments({ status: 'active', stock: { $gt: 0, $lt: 10 } }),
@@ -151,7 +176,85 @@ router.get('/stats', async (req, res) => {
         },
         { $group: { _id: null, total: { $sum: '$lossAmount' } } },
       ]),
+      Medicine.aggregate([
+        { $match: { status: "active" } },
+        {
+          $group: {
+            _id: null,
+            healthy: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $gte: ["$stock", 10] },
+                      { $gte: ["$expiryDate", now] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            low: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $gt: ["$stock", 0] },
+                      { $lt: ["$stock", 10] },
+                      { $gte: ["$expiryDate", now] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            out: {
+              $sum: { $cond: [{ $eq: ["$stock", 0] }, 1, 0] },
+            },
+            expired: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $gt: ["$stock", 0] },
+                      { $lt: ["$expiryDate", now] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ]),
+      Sale.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: salesTrendStart, $lt: salesTrendEnd },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: "$createdAt",
+                timezone: "Africa/Nairobi",
+              },
+            },
+            total: { $sum: "$total" },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
     ]);
+    const salesTrendByDate = new Map(
+      salesTrendAgg.map((day) => [day._id, day]),
+    );
 
     res.json({
       success: true,
@@ -162,6 +265,17 @@ router.get('/stats', async (req, res) => {
         expiredCount,
         expiringSoonCount,
         totalStockUnits: totalStockUnitsAgg[0]?.total || 0,
+        stockHealth: {
+          healthy: stockHealthAgg[0]?.healthy || 0,
+          low: stockHealthAgg[0]?.low || 0,
+          out: stockHealthAgg[0]?.out || 0,
+          expired: stockHealthAgg[0]?.expired || 0,
+        },
+        salesTrend: salesTrendKeys.map((date) => ({
+          date,
+          total: Number((salesTrendByDate.get(date)?.total || 0).toFixed(2)),
+          count: salesTrendByDate.get(date)?.count || 0,
+        })),
         inventoryValue: Number((inventoryValueAgg[0]?.totalValue || 0).toFixed(2)),
         totalRevenue: Number((totalRevenueAgg[0]?.total || 0).toFixed(2)),
         todaySales: {
