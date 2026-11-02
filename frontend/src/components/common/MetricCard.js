@@ -1,9 +1,16 @@
 import React from 'react';
 import AppIcon from './AppIcon';
 
-export default function MetricCard({ label, value, sub, tone = 'primary', icon }) {
+export default function MetricCard({
+  label,
+  value,
+  sub,
+  tone = 'primary',
+  icon,
+  className = '',
+}) {
   return (
-    <div className={`metric-card metric-${tone}`}>
+    <div className={`metric-card metric-${tone} ${className}`.trim()}>
       {icon ? <div className="metric-icon"><AppIcon icon={icon} size="lg" /></div> : null}
       <div className="metric-label">{label}</div>
       <div className="metric-value">{value}</div>

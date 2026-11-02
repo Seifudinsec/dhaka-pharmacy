@@ -1978,12 +1978,6 @@ body {
         filter: saturate(1.2) brightness(0.97);
     }
 
-    .dashboard-sales-bar-1 { background: linear-gradient(180deg, #d9b3df, #bf88ca); }
-    .dashboard-sales-bar-2 { background: linear-gradient(180deg, #c9e69e, #a9d274); }
-    .dashboard-sales-bar-3 { background: linear-gradient(180deg, #a9d8d0, #7dbdb3); }
-    .dashboard-sales-bar-4 { background: linear-gradient(180deg, #e8b6b5, #d99496); }
-    .dashboard-sales-bar-5 { background: linear-gradient(180deg, #bbc5ec, #929fd5); }
-
     .dashboard-sales-day {
         align-self: end;
         overflow: hidden;
@@ -2093,34 +2087,60 @@ body {
         bottom: 20px;
         width: 58px;
         height: 58px;
-        background: linear-gradient(to top, rgba(28, 75, 72, 0.13) 0 44%, transparent 44%) 0 100% / 11px 100% no-repeat,
-            linear-gradient(to top, rgba(28, 75, 72, 0.1) 0 72%, transparent 72%) 17px 100% / 11px 100% no-repeat,
-            linear-gradient(to top, rgba(28, 75, 72, 0.16) 0 100%, transparent 100%) 34px 100% / 11px 100% no-repeat,
-            linear-gradient(to top, rgba(28, 75, 72, 0.09) 0 58%, transparent 58%) 51px 100% / 7px 100% no-repeat;
+        background: linear-gradient(to top, color-mix(in srgb, var(--dashboard-metric-accent, #315a56) 13%, transparent) 0 44%, transparent 44%) 0 100% / 11px 100% no-repeat,
+            linear-gradient(to top, color-mix(in srgb, var(--dashboard-metric-accent, #315a56) 10%, transparent) 0 72%, transparent 72%) 17px 100% / 11px 100% no-repeat,
+            linear-gradient(to top, color-mix(in srgb, var(--dashboard-metric-accent, #315a56) 16%, transparent) 0 100%, transparent 100%) 34px 100% / 11px 100% no-repeat,
+            linear-gradient(to top, color-mix(in srgb, var(--dashboard-metric-accent, #315a56) 9%, transparent) 0 58%, transparent 58%) 51px 100% / 7px 100% no-repeat;
         border-radius: 8px;
         content: "";
         opacity: 0.8;
         pointer-events: none;
     }
 
-    .dashboard-page .dashboard-metrics-grid > :nth-child(4n + 1) .metric-card,
-    .dashboard-page .dashboard-metrics-grid > .metric-card:nth-child(4n + 1) {
-        background: #e3f2bf;
+    .dashboard-page .dashboard-metric--catalog {
+        --dashboard-metric-accent: #5378ad;
+        background: #dce8f6;
     }
 
-    .dashboard-page .dashboard-metrics-grid > :nth-child(4n + 2) .metric-card,
-    .dashboard-page .dashboard-metrics-grid > .metric-card:nth-child(4n + 2) {
-        background: #c4e7df;
+    .dashboard-page .dashboard-metric--low,
+    .dashboard-page .dashboard-metric--expiring {
+        --dashboard-metric-accent: #b87912;
+        background: #fff0c7;
     }
 
-    .dashboard-page .dashboard-metrics-grid > :nth-child(4n + 3) .metric-card,
-    .dashboard-page .dashboard-metrics-grid > .metric-card:nth-child(4n + 3) {
-        background: #f0d1d1;
+    .dashboard-page .dashboard-metric--out {
+        --dashboard-metric-accent: #bf4e48;
+        background: #f8d8d6;
     }
 
-    .dashboard-page .dashboard-metrics-grid > :nth-child(4n) .metric-card,
-    .dashboard-page .dashboard-metrics-grid > .metric-card:nth-child(4n) {
-        background: #d3d9f4;
+    .dashboard-page .dashboard-metric--expired {
+        --dashboard-metric-accent: #a63f55;
+        background: #f0cbd0;
+    }
+
+    .dashboard-page .dashboard-metric--sales {
+        --dashboard-metric-accent: #368b81;
+        background: #d5efeb;
+    }
+
+    .dashboard-page .dashboard-metric--profit {
+        --dashboard-metric-accent: #43834f;
+        background: #d9efce;
+    }
+
+    .dashboard-page .dashboard-metric--revenue {
+        --dashboard-metric-accent: #5769b0;
+        background: #dfe4fa;
+    }
+
+    .dashboard-page .dashboard-metric--inventory-value {
+        --dashboard-metric-accent: #8056a3;
+        background: #e8def6;
+    }
+
+    .dashboard-page .dashboard-metric--stock {
+        --dashboard-metric-accent: #547e9a;
+        background: #dce9f3;
     }
 
     .dashboard-page .metric-icon {
@@ -2130,7 +2150,7 @@ body {
         margin-bottom: auto;
         border-radius: 50%;
         background: rgba(255, 255, 255, 0.38);
-        color: #315a56;
+        color: var(--dashboard-metric-accent, #315a56);
         place-items: center;
     }
 
@@ -2294,20 +2314,38 @@ body {
         background: #172a3d;
     }
 
-    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid > :nth-child(4n + 1) .metric-card {
-        background: #263a36;
+    [data-theme="dark"] .dashboard-page .dashboard-metric--catalog,
+    [data-theme="dark"] .dashboard-page .dashboard-metric--stock {
+        background: #26354a;
     }
 
-    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid > :nth-child(4n + 2) .metric-card {
+    [data-theme="dark"] .dashboard-page .dashboard-metric--low,
+    [data-theme="dark"] .dashboard-page .dashboard-metric--expiring {
+        background: #403821;
+    }
+
+    [data-theme="dark"] .dashboard-page .dashboard-metric--out {
+        background: #472b30;
+    }
+
+    [data-theme="dark"] .dashboard-page .dashboard-metric--expired {
+        background: #402531;
+    }
+
+    [data-theme="dark"] .dashboard-page .dashboard-metric--sales {
         background: #203b39;
     }
 
-    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid > :nth-child(4n + 3) .metric-card {
-        background: #3b2c37;
+    [data-theme="dark"] .dashboard-page .dashboard-metric--profit {
+        background: #293c2c;
     }
 
-    [data-theme="dark"] .dashboard-page .dashboard-metrics-grid > :nth-child(4n) .metric-card {
-        background: #29324a;
+    [data-theme="dark"] .dashboard-page .dashboard-metric--revenue {
+        background: #2a3150;
+    }
+
+    [data-theme="dark"] .dashboard-page .dashboard-metric--inventory-value {
+        background: #382d48;
     }
 
     [data-theme="dark"] .dashboard-page .metric-value,

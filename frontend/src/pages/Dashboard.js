@@ -26,10 +26,10 @@ import {
 import useDelayedLoading from "../hooks/useDelayedLoading";
 
 const STOCK_HEALTH_SEGMENTS = [
-  { key: "healthy", label: "Healthy stock", color: "#b8dc8d" },
-  { key: "low", label: "Low stock", color: "#80c9bd" },
-  { key: "expired", label: "Expired stock", color: "#e7a5a9" },
-  { key: "out", label: "Out of stock", color: "#a7b2df" },
+  { key: "healthy", label: "Healthy stock", color: "#62a87a" },
+  { key: "low", label: "Low stock", color: "#e2a53a" },
+  { key: "expired", label: "Expired stock", color: "#d56b70" },
+  { key: "out", label: "Out of stock", color: "#778397" },
 ];
 
 const formatKes = (value) =>
@@ -153,7 +153,7 @@ function WeeklySalesChart({ salesTrend = [] }) {
               aria-hidden="true"
             />
           ))}
-          {salesTrend.map((day, index) => {
+          {salesTrend.map((day) => {
             const value = Number(day.total || 0);
             const dayDate = new Date(`${day.date}T12:00:00`);
             const label = Number.isNaN(dayDate.getTime())
@@ -169,7 +169,7 @@ function WeeklySalesChart({ salesTrend = [] }) {
               >
                 <div className="dashboard-sales-bar-track">
                   <div
-                    className={`dashboard-sales-bar dashboard-sales-bar-${index % 6}`}
+                    className="dashboard-sales-bar"
                     style={{ height: `${height}%` }}
                   />
                 </div>
@@ -289,6 +289,7 @@ export default function Dashboard() {
               value={stats?.totalMedicines}
               sub="In database"
               tone="primary"
+              className="dashboard-metric--catalog"
             />
           </div>
           <div
@@ -301,6 +302,7 @@ export default function Dashboard() {
               value={stats?.lowStockCount}
               sub="Below 10 units"
               tone="warning"
+              className="dashboard-metric--low"
             />
           </div>
           <div
@@ -313,6 +315,7 @@ export default function Dashboard() {
               value={stats?.outOfStockCount}
               sub="Zero units left"
               tone="danger"
+              className="dashboard-metric--out"
             />
           </div>
           <div
@@ -325,6 +328,7 @@ export default function Dashboard() {
               value={stats?.expiredCount}
               sub="Past expiry date"
               tone="danger"
+              className="dashboard-metric--expired"
             />
           </div>
 
@@ -344,6 +348,7 @@ export default function Dashboard() {
                   : "Completed today"
               }
               tone="success"
+              className="dashboard-metric--sales"
             />
           </div>
 
@@ -355,6 +360,7 @@ export default function Dashboard() {
                 value={`KES ${(stats?.todayProfit || 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`}
                 sub="From completed sales"
                 tone="success"
+                className="dashboard-metric--profit"
               />
               <MetricCard
                 icon={faCoins}
@@ -362,6 +368,7 @@ export default function Dashboard() {
                 value={`KES ${(stats?.totalRevenue || 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`}
                 sub="All time"
                 tone="primary"
+                className="dashboard-metric--revenue"
               />
               <MetricCard
                 icon={faBox}
@@ -369,6 +376,7 @@ export default function Dashboard() {
                 value={`KES ${(stats?.inventoryValue || 0).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`}
                 sub="Current stock value"
                 tone="info"
+                className="dashboard-metric--inventory-value"
               />
             </>
           )}
@@ -381,6 +389,7 @@ export default function Dashboard() {
                 value={stats?.expiringSoonCount || 0}
                 sub="Next 30 days"
                 tone="warning"
+                className="dashboard-metric--expiring"
               />
               <MetricCard
                 icon={faBox}
@@ -388,6 +397,7 @@ export default function Dashboard() {
                 value={stats?.totalStockUnits || 0}
                 sub="Units in inventory"
                 tone="info"
+                className="dashboard-metric--stock"
               />
             </>
           )}
