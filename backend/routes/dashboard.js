@@ -3,6 +3,7 @@ const router = express.Router();
 const Medicine = require('../models/Medicine');
 const Sale = require('../models/Sale');
 const { protect } = require('../middleware/auth');
+const { ownerScope } = require('../middleware/authorization');
 
 router.use(protect);
 
@@ -10,6 +11,8 @@ router.use(protect);
 router.get('/stats', async (req, res) => {
   try {
     const now = new Date();
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'main_admin';
+    const saleScope = ownerScope(req.user, 'servedBy');
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const nextMonth = new Date();
@@ -64,21 +67,31 @@ router.get('/stats', async (req, res) => {
       Medicine.countDocuments({ status: 'active', expiryDate: { $lt: now } }),
       Medicine.countDocuments({ status: 'active', expiryDate: { $gte: now, $lte: nextMonth } }),
       Sale.aggregate([
-        { $match: { createdAt: { $gte: todayStart } } },
+        { $match: { ...saleScope, createdAt: { $gte: todayStart } } },
         { $group: { _id: null, total: { $sum: '$total' }, count: { $sum: 1 } } },
       ]),
-      Sale.aggregate([
-        { $match: { createdAt: { $gte: todayStart } } },
-        { $group: { _id: null, totalProfit: { $sum: '$totalProfit' } } },
-      ]),
-      Sale.aggregate([{ $group: { _id: null, total: { $sum: '$total' } } }]),
-      Medicine.aggregate([
+      isAdmin
+        ? Sale.aggregate([
+            { $match: { createdAt: { $gte: todayStart } } },
+            { $group: { _id: null, totalProfit: { $sum: '$totalProfit' } } },
+          ])
+        : Promise.resolve([]),
+      isAdmin
+        ? Sale.aggregate([
+            { $group: { _id: null, total: { $sum: '$total' } } },
+          ])
+        : Promise.resolve([]),
+      isAdmin ? Medicine.aggregate([
         { $match: { status: 'active' } },
         { $group: { _id: null, totalValue: { $sum: { $multiply: ['$buyingPrice', '$stock'] } } } },
-      ]),
+      ]) : Promise.resolve([]),
       Medicine.aggregate([{ $match: { status: 'active' } }, { $group: { _id: null, total: { $sum: '$stock' } } }]),
-      Sale.find().sort({ createdAt: -1 }).limit(5).populate('servedBy', 'username'),
-      Medicine.aggregate([
+      Sale.find(saleScope)
+        .select(isAdmin ? '' : '-items.buyingPrice -items.profit -totalProfit')
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .populate('servedBy', 'username'),
+      isAdmin ? Medicine.aggregate([
         {
           $addFields: {
             estimatedStockProfit: { $multiply: [{ $subtract: ['$price', '$buyingPrice'] }, '$stock'] },
@@ -88,8 +101,8 @@ router.get('/stats', async (req, res) => {
         { $sort: { estimatedStockProfit: -1 } },
         { $limit: 5 },
         { $project: { name: 1, stock: 1, price: 1, buyingPrice: 1, estimatedStockProfit: 1, _id: 1 } },
-      ]),
-      Medicine.aggregate([
+      ]) : Promise.resolve([]),
+      isAdmin ? Medicine.aggregate([
         { $match: { status: 'active', stock: { $gt: 0 } } },
         {
           $addFields: {
@@ -139,10 +152,14 @@ router.get('/stats', async (req, res) => {
             lossType: 1, lossAmount: 1, _id: 1,
           },
         },
-      ]),
-      Medicine.find({ status: 'active', stock: { $lt: 10 } }).limit(5),
-      Medicine.find({ status: 'active', expiryDate: { $lt: now } }).limit(5),
-      Medicine.aggregate([
+      ]) : Promise.resolve([]),
+      Medicine.find({ status: 'active', stock: { $lt: 10 } })
+        .select(isAdmin ? '' : 'name stock expiryDate')
+        .limit(5),
+      Medicine.find({ status: 'active', expiryDate: { $lt: now } })
+        .select(isAdmin ? '' : 'name stock expiryDate')
+        .limit(5),
+      isAdmin ? Medicine.aggregate([
         { $match: { status: 'active', stock: { $gt: 0 } } },
         {
           $addFields: {
@@ -175,7 +192,7 @@ router.get('/stats', async (req, res) => {
           },
         },
         { $group: { _id: null, total: { $sum: '$lossAmount' } } },
-      ]),
+      ]) : Promise.resolve([]),
       Medicine.aggregate([
         { $match: { status: "active" } },
         {
@@ -233,6 +250,7 @@ router.get('/stats', async (req, res) => {
       Sale.aggregate([
         {
           $match: {
+            ...saleScope,
             createdAt: { $gte: salesTrendStart, $lt: salesTrendEnd },
           },
         },
@@ -256,40 +274,49 @@ router.get('/stats', async (req, res) => {
       salesTrendAgg.map((day) => [day._id, day]),
     );
 
-    res.json({
-      success: true,
-      data: {
-        totalMedicines,
-        lowStockCount,
-        outOfStockCount,
-        expiredCount,
-        expiringSoonCount,
-        totalStockUnits: totalStockUnitsAgg[0]?.total || 0,
-        stockHealth: {
-          healthy: stockHealthAgg[0]?.healthy || 0,
-          low: stockHealthAgg[0]?.low || 0,
-          out: stockHealthAgg[0]?.out || 0,
-          expired: stockHealthAgg[0]?.expired || 0,
-        },
-        salesTrend: salesTrendKeys.map((date) => ({
-          date,
-          total: Number((salesTrendByDate.get(date)?.total || 0).toFixed(2)),
-          count: salesTrendByDate.get(date)?.count || 0,
-        })),
+    const data = {
+      totalMedicines,
+      lowStockCount,
+      outOfStockCount,
+      expiredCount,
+      expiringSoonCount,
+      totalStockUnits: totalStockUnitsAgg[0]?.total || 0,
+      stockHealth: {
+        healthy: stockHealthAgg[0]?.healthy || 0,
+        low: stockHealthAgg[0]?.low || 0,
+        out: stockHealthAgg[0]?.out || 0,
+        expired: stockHealthAgg[0]?.expired || 0,
+      },
+      salesTrend: salesTrendKeys.map((date) => ({
+        date,
+        total: Number((salesTrendByDate.get(date)?.total || 0).toFixed(2)),
+        count: salesTrendByDate.get(date)?.count || 0,
+      })),
+      todaySales: {
+        count: todaySalesAgg[0]?.count || 0,
+        ...(isAdmin
+          ? { total: Number((todaySalesAgg[0]?.total || 0).toFixed(2)) }
+          : {}),
+      },
+      recentSales,
+      criticalStockItems,
+      expiredItems,
+    };
+
+    if (isAdmin) {
+      Object.assign(data, {
         inventoryValue: Number((inventoryValueAgg[0]?.totalValue || 0).toFixed(2)),
         totalRevenue: Number((totalRevenueAgg[0]?.total || 0).toFixed(2)),
-        todaySales: {
-          count: todaySalesAgg[0]?.count || 0,
-          total: Number((todaySalesAgg[0]?.total || 0).toFixed(2)),
-        },
         todayProfit: Number((todayProfitAgg[0]?.totalProfit || 0).toFixed(2)),
         topProfitProducts,
         potentialLossItems: topLossProducts,
         totalPotentialLoss: Number((totalPotentialLossAgg[0]?.total || 0).toFixed(2)),
-        recentSales,
-        criticalStockItems,
-        expiredItems,
-      },
+      });
+    }
+
+    res.json({
+      success: true,
+      data,
     });
   } catch (error) {
     console.error('Dashboard stats error:', error);

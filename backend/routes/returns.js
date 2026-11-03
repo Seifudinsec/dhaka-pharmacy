@@ -1,6 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
-const { protect } = require("../middleware/auth");
+const { protect, adminOnly } = require("../middleware/auth");
+const { ownerScope } = require("../middleware/authorization");
 const auditLog = require("../middleware/audit");
 const Sale = require("../models/Sale");
 const Return = require("../models/Return");
@@ -10,6 +11,20 @@ const { getIO } = require("../config/socket");
 const router = express.Router();
 
 router.use(protect);
+
+const hideReturnFinancials = (record, role) => {
+  const data = record?.toObject ? record.toObject() : { ...record };
+  if (role === "pharmacist") {
+    delete data.totalProfitLoss;
+    data.items = (data.items || []).map((item) => {
+      const safeItem = item.toObject ? item.toObject() : { ...item };
+      delete safeItem.buyingPrice;
+      delete safeItem.profit;
+      return safeItem;
+    });
+  }
+  return data;
+};
 
 // POST /api/returns - Create a return/refund (transactional)
 router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
@@ -36,6 +51,12 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
 
       if (!originalSale) {
         throw { status: 404, message: "Original sale not found" };
+      }
+      if (
+        req.user.role === "pharmacist" &&
+        String(originalSale.servedBy) !== String(userId)
+      ) {
+        throw { status: 403, message: "You can only return your own sales." };
       }
 
       const originalGrossTotal = originalSale.items.reduce(
@@ -170,7 +191,7 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Return processed successfully",
-      data: returnRecord,
+      data: hideReturnFinancials(returnRecord, req.user.role),
       sale: {
         id: updatedSale?._id,
         status: updatedSale?.status,
@@ -189,17 +210,17 @@ router.post("/", auditLog("SALE_RETURNED", "Return"), async (req, res) => {
 // GET /api/returns - Get all returns (admin sees all, pharmacist sees own)
 router.get("/", async (req, res) => {
   try {
-    const query =
-      ["admin", "pharmacist", "main_admin"].includes(req.user.role) ? {} : { processedBy: req.user._id };
+    const query = ownerScope(req.user, "processedBy");
 
-    const returns = await Return.find(query)
-      .populate("originalSale", "total createdAt status")
+    const returnQuery = Return.find(query)
+      .populate("originalSale", "total createdAt status servedBy")
       .populate("processedBy", "username")
       .sort({ createdAt: -1 });
+    const returns = await returnQuery;
 
     return res.json({
       success: true,
-      data: returns,
+      data: returns.map((record) => hideReturnFinancials(record, req.user.role)),
     });
   } catch (error) {
     console.error("Get returns error:", error);
@@ -214,7 +235,7 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const returnRecord = await Return.findById(req.params.id)
-      .populate("originalSale")
+      .populate("originalSale", "total createdAt status servedBy")
       .populate("processedBy", "username");
 
     if (!returnRecord) {
@@ -236,7 +257,7 @@ router.get("/:id", async (req, res) => {
 
     return res.json({
       success: true,
-      data: returnRecord,
+      data: hideReturnFinancials(returnRecord, req.user.role),
     });
   } catch (error) {
     console.error("Get return error:", error);
@@ -248,15 +269,8 @@ router.get("/:id", async (req, res) => {
 });
 
 // PUT /api/returns/:id/status - Update return status (admin only)
-router.put("/:id/status", async (req, res) => {
+router.put("/:id/status", adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Admins only.",
-      });
-    }
-
     const { status } = req.body;
     if (!["pending", "approved", "rejected"].includes(status)) {
       return res.status(400).json({

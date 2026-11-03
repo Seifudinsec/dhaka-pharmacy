@@ -5,10 +5,25 @@ const Sale = require("../models/Sale");
 const Medicine = require("../models/Medicine");
 const SpecialDrug = require("../models/SpecialDrug");
 const { protect } = require("../middleware/auth");
+const { ownerScope } = require("../middleware/authorization");
 
 const { getIO } = require("../config/socket");
 
 router.use(protect);
+
+const hideSaleCosts = (sale, role) => {
+  const data = sale?.toObject ? sale.toObject() : { ...sale };
+  if (role === "pharmacist") {
+    delete data.totalProfit;
+    data.items = (data.items || []).map((item) => {
+      const safeItem = item.toObject ? item.toObject() : { ...item };
+      delete safeItem.buyingPrice;
+      delete safeItem.profit;
+      return safeItem;
+    });
+  }
+  return data;
+};
 
 const normalizeName = (value = "") =>
   String(value).trim().toLowerCase().replace(/\s+/g, " ");
@@ -20,7 +35,7 @@ const escapeRegex = (value = "") =>
 router.get("/", async (req, res) => {
   try {
     const { startDate, endDate, page = 1, limit = 20 } = req.query;
-    const query = {};
+    const query = ownerScope(req.user, "servedBy");
 
     if (startDate || endDate) {
       query.createdAt = {};
@@ -36,14 +51,19 @@ router.get("/", async (req, res) => {
     const safeLimit = Math.max(1, Math.min(200, Number(limit) || 20));
     const skip = (safePage - 1) * safeLimit;
 
+    const salesQuery = Sale.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .populate("servedBy", "username")
+      .populate("items.medicine", "name");
+    if (req.user.role === "pharmacist") {
+      salesQuery.select("-items.buyingPrice -items.profit -totalProfit");
+    }
+
     const [total, sales, revenue] = await Promise.all([
       Sale.countDocuments(query),
-      Sale.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(safeLimit)
-        .populate("servedBy", "username")
-        .populate("items.medicine", "name"),
+      salesQuery,
       Sale.aggregate([
         { $match: query },
         { $group: { _id: null, total: { $sum: "$total" } } },
@@ -52,7 +72,7 @@ router.get("/", async (req, res) => {
 
     res.json({
       success: true,
-      data: sales,
+      data: sales.map((sale) => hideSaleCosts(sale, req.user.role)),
       totalRevenue: Number((revenue[0]?.total || 0).toFixed(2)),
       pagination: {
         total,
@@ -262,7 +282,7 @@ router.post("/", async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Sale recorded successfully.",
-      data: createdSale,
+      data: hideSaleCosts(createdSale, req.user.role),
       stockAlerts: stockAlerts.length ? stockAlerts : undefined,
       warnings: warnings.length ? warnings : undefined,
     });
@@ -297,7 +317,7 @@ router.get("/today", async (req, res) => {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const stats = await Sale.aggregate([
-      { $match: { createdAt: { $gte: today, $lt: tomorrow } } },
+      { $match: { ...ownerScope(req.user, "servedBy"), createdAt: { $gte: today, $lt: tomorrow } } },
       {
         $group: {
           _id: null,
@@ -314,7 +334,9 @@ router.get("/today", async (req, res) => {
       success: true,
       count: result.count,
       total: Number(result.total.toFixed(2)),
-      totalProfit: Number(result.totalProfit.toFixed(2)),
+      ...(req.user.role === "pharmacist"
+        ? {}
+        : { totalProfit: Number(result.totalProfit.toFixed(2)) }),
     });
   } catch (error) {
     res
