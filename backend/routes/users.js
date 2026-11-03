@@ -3,6 +3,11 @@ const bcrypt = require('bcryptjs');
 const router = express.Router();
 const User = require('../models/User');
 const { protect, adminOnly } = require('../middleware/auth');
+const {
+  ROLES,
+  canManageUser,
+  canAssignUserRole,
+} = require('../middleware/authorization');
 const auditLog = require('../middleware/audit');
 
 router.use(protect, adminOnly);
@@ -10,11 +15,13 @@ router.use(protect, adminOnly);
 // GET /api/users
 router.get('/', async (req, res) => {
   try {
-    const query = {};
     if (req.user.role === 'admin') {
-      query.role = { $ne: 'main_admin' };
+      const users = await User.find({
+        $or: [{ role: 'pharmacist' }, { _id: req.user._id }],
+      }).select('-password').sort({ createdAt: -1 });
+      return res.json({ success: true, data: users });
     }
-    const users = await User.find(query).select('-password').sort({ createdAt: -1 });
+    const users = await User.find().select('-password').sort({ createdAt: -1 });
     res.json({ success: true, data: users });
   } catch (error) {
     console.error('List users error:', error);
@@ -58,7 +65,7 @@ router.post('/', auditLog('USER_CREATED', 'User'), async (req, res) => {
     if (String(password).length < 6) {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
     }
-    if (!['main_admin', 'admin', 'pharmacist'].includes(role)) {
+    if (!ROLES.includes(role) || role === 'main_admin') {
       return res.status(400).json({ success: false, message: 'Invalid role provided.' });
     }
     if (req.user.role === 'admin' && role !== 'pharmacist') {
@@ -86,17 +93,19 @@ router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
     const targetUser = await User.findById(req.params.id);
     if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
 
-    if (req.user.role === 'admin') {
-      if (targetUser.role === 'main_admin') {
-        return res.status(403).json({ success: false, message: 'Admins cannot modify the Main Admin.' });
-      }
-      if (targetUser.role === 'admin' && String(targetUser._id) !== String(req.user._id)) {
-        return res.status(403).json({ success: false, message: 'Admins cannot modify other admins.' });
-      }
+    if (!canManageUser(req.user, targetUser)) {
+      return res.status(403).json({ success: false, message: 'You cannot modify this user.' });
     }
 
     const { username, role, notificationPreferences } = req.body;
     const updates = {};
+    const allowedKeys = new Set(['username', 'role', 'notificationPreferences']);
+    if (Object.keys(req.body).some((key) => !allowedKeys.has(key))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Unsupported user field. Use the password reset action to change passwords.',
+      });
+    }
 
     if (username !== undefined) {
       const normalizedUsername = String(username).trim().toLowerCase();
@@ -114,30 +123,22 @@ router.put('/:id', auditLog('USER_UPDATED', 'User'), async (req, res) => {
     }
 
     if (role !== undefined) {
-      if (!['main_admin', 'admin', 'pharmacist'].includes(role)) {
+      if (!ROLES.includes(role)) {
         return res.status(400).json({ success: false, message: 'Invalid role provided.' });
       }
-      if (req.user.role === 'admin' && role !== 'pharmacist' && String(targetUser._id) !== String(req.user._id)) {
-        return res.status(403).json({ success: false, message: 'Admins cannot elevate users.' });
+      if (!canAssignUserRole(req.user, targetUser, role)) {
+        return res.status(403).json({ success: false, message: 'Only the Main Admin can change user roles.' });
       }
-      if (targetUser.isMainAdmin && role !== targetUser.role) {
-        return res.status(403).json({ success: false, message: 'Main Admin role is permanent and cannot be modified.' });
-      }
-      if (!targetUser.isMainAdmin) {
-        updates.role = role;
-      }
+      updates.role = role;
     }
 
-    const allowedMainAdminKeys = new Set(['username', 'password', 'notificationPreferences']);
-    const incomingKeys = new Set(Object.keys(req.body).filter(k => k !== 'adminPassword'));
-    for (const key of incomingKeys) {
-      if (targetUser.isMainAdmin && !allowedMainAdminKeys.has(key)) {
-        return res.status(403).json({ success: false, message: 'Main Admin privileges are permanent. Only username, password, and notification preferences can be updated.' });
-      }
-    }
-    if (req.body.password !== undefined) updates.password = req.body.password;
     if (notificationPreferences !== undefined) {
-      updates.notificationPreferences = notificationPreferences;
+      const prefs = notificationPreferences || {};
+      updates.notificationPreferences = {
+        lowStock: prefs.lowStock !== false,
+        expiry: prefs.expiry !== false,
+        dailySales: prefs.dailySales === true,
+      };
     }
 
     const user = await User.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true }).select('-password');
@@ -172,13 +173,8 @@ router.post('/:id/reset-password', auditLog('USER_PASSWORD_RESET', 'User'), asyn
       return res.status(400).json({ success: false, message: 'Confirmation password incorrect. Authorization failed.' });
     }
 
-    if (req.user.role === 'admin') {
-      if (targetUser.role === 'main_admin') {
-        return res.status(403).json({ success: false, message: 'Admins cannot modify the Main Admin.' });
-      }
-      if (targetUser.role === 'admin' && String(targetUser._id) !== String(req.user._id)) {
-        return res.status(403).json({ success: false, message: 'Admins cannot modify other admins.' });
-      }
+    if (!canManageUser(req.user, targetUser)) {
+      return res.status(403).json({ success: false, message: 'You cannot reset this user’s password.' });
     }
 
     const salt = await bcrypt.genSalt(12);
@@ -228,19 +224,17 @@ router.put('/:id/toggle-status', async (req, res) => {
   try {
     const targetUser = await User.findById(req.params.id);
     if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
-    if (req.user.role === 'admin') {
-      if (targetUser.role === 'main_admin') {
-        return res.status(403).json({ success: false, message: 'Admins cannot modify the Main Admin.' });
-      }
-      if (targetUser.role === 'admin' && String(targetUser._id) !== String(req.user._id)) {
-        return res.status(403).json({ success: false, message: 'Admins cannot modify other admins.' });
-      }
+    if (!canManageUser(req.user, targetUser)) {
+      return res.status(403).json({ success: false, message: 'You cannot change this user’s status.' });
     }
 
     const { status } = req.body;
 
     if (!['active', 'inactive'].includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status provided.' });
+    }
+    if (String(req.user._id) === String(targetUser._id) || targetUser.role === 'main_admin') {
+      return res.status(403).json({ success: false, message: 'You cannot change your own status or the Main Admin status.' });
     }
 
     // Prevent deactivating the last admin

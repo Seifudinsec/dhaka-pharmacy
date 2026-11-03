@@ -172,7 +172,12 @@ const UsersManagementPage = () => {
   const handleEditUser = async (e) => {
     e.preventDefault();
     try {
-      const { data } = await api.put(`/users/${selectedUser._id}`, formData);
+      const updates = {
+        username: formData.username,
+        notificationPreferences: formData.notificationPreferences,
+      };
+      if (selectedUser.role !== "main_admin") updates.role = formData.role;
+      const { data } = await api.put(`/users/${selectedUser._id}`, updates);
       if (data.success) {
         toast.success("User updated successfully");
         setShowEditModal(false);
@@ -291,7 +296,6 @@ const UsersManagementPage = () => {
     setSelectedUser(user);
     setFormData({
       username: user.username,
-      password: "",
       role: user.role,
       notificationPreferences: user.notificationPreferences,
     });
@@ -420,7 +424,8 @@ const UsersManagementPage = () => {
                     </span>
                   </td>
                   <td data-label="Status">
-                    <button
+                    {user.role !== "main_admin" &&
+                      String(user._id) !== String(currentUser._id) && <button
                       className="status-toggle"
                       onClick={() =>
                         handleToggleUserStatus(user._id, user.status)
@@ -444,7 +449,7 @@ const UsersManagementPage = () => {
                         />
                       )}
                       {user.status}
-                    </button>
+                    </button>}
                   </td>
                   <td data-label="Notifications">
                     <div className="notification-preferences">
@@ -574,7 +579,8 @@ const UsersManagementPage = () => {
 
                     <div className="user-mobile-row">
                       <span className="user-mobile-label">Status</span>
-                      <button
+                      {user.role !== "main_admin" &&
+                        String(user._id) !== String(currentUser._id) && <button
                         className="status-toggle"
                         onClick={() =>
                           handleToggleUserStatus(user._id, user.status)
@@ -600,7 +606,7 @@ const UsersManagementPage = () => {
                           />
                         )}
                         {user.status}
-                      </button>
+                      </button>}
                     </div>
 
                     <div className="user-mobile-row">
@@ -845,7 +851,7 @@ const UsersManagementPage = () => {
                     className="form-select"
                   >
                     <option value="pharmacist">Pharmacist</option>
-                    <option value="admin">Admin</option>
+                    {currentUser.role === "main_admin" && <option value="admin">Admin</option>}
                   </select>
                 </div>
                 <div className="form-group">
@@ -1059,20 +1065,23 @@ const UsersManagementPage = () => {
                   </div>
                 )}
               </div>
-              <div className="form-group">
-                <label htmlFor="edit-role">Role</label>
-                <select
-                  id="edit-role"
-                  value={formData.role}
-                  onChange={(e) =>
-                    setFormData({ ...formData, role: e.target.value })
-                  }
-                  className="form-select"
-                >
-                  <option value="pharmacist">Pharmacist</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
+              {currentUser.role === "main_admin" &&
+                selectedUser.role !== "main_admin" && (
+                  <div className="form-group">
+                    <label htmlFor="edit-role">Role</label>
+                    <select
+                      id="edit-role"
+                      value={formData.role}
+                      onChange={(e) =>
+                        setFormData({ ...formData, role: e.target.value })
+                      }
+                      className="form-select"
+                    >
+                      <option value="pharmacist">Pharmacist</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                )}
               <div className="form-group">
                 <label>Notification Preferences</label>
                 <div className="checkbox-group">
