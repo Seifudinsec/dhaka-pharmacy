@@ -8,7 +8,7 @@ const AuditLog = require('../models/AuditLog');
 const ImportHistory = require('../models/ImportHistory');
 const ImportRow = require('../models/ImportRow');
 const SpecialDrug = require('../models/SpecialDrug');
-const { protect, adminOnly } = require('../middleware/auth');
+const { protect, mainAdminOnly } = require('../middleware/auth');
 
 router.use(protect);
 
@@ -64,7 +64,7 @@ router.put('/notifications/me', async (req, res) => {
 });
 
 // POST /api/settings/backup
-router.post('/backup', adminOnly, async (req, res) => {
+router.post('/backup', mainAdminOnly, async (req, res) => {
   try {
     const [medicines, sales, users, returns, auditLogs, importHistories, importRows, specialDrugs] = await Promise.all([
       Medicine.find().lean(),
@@ -98,7 +98,7 @@ router.post('/backup', adminOnly, async (req, res) => {
 });
 
 // POST /api/settings/restore
-router.post('/restore', adminOnly, async (req, res) => {
+router.post('/restore', mainAdminOnly, async (req, res) => {
   const modelMap = {
     medicines: { model: Medicine, required: true },
     users: { model: User, required: false },
@@ -155,12 +155,12 @@ router.post('/restore', adminOnly, async (req, res) => {
 });
 
 // POST /api/settings/danger/reset-system
-router.post('/danger/reset-system', adminOnly, async (req, res) => {
+router.post('/danger/reset-system', mainAdminOnly, async (req, res) => {
   res.json({ success: true, message: 'System preferences reset completed.' });
 });
 
 // POST /api/settings/danger/delete-all-data
-router.post('/danger/delete-all-data', adminOnly, async (req, res) => {
+router.post('/danger/delete-all-data', mainAdminOnly, async (req, res) => {
   try {
     await Promise.all([
       Sale.deleteMany({}),
@@ -179,7 +179,7 @@ router.post('/danger/delete-all-data', adminOnly, async (req, res) => {
 });
 
 // POST /api/settings/danger/logout-all-devices
-router.post('/danger/logout-all-devices', adminOnly, async (req, res) => {
+router.post('/danger/logout-all-devices', mainAdminOnly, async (req, res) => {
   try {
     const result = await User.updateMany({}, { $inc: { tokenVersion: 1 } });
     res.json({

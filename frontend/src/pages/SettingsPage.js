@@ -18,7 +18,8 @@ const TABS = [
 
 export default function SettingsPage({ theme, onThemeChange, notificationSettings, onNotificationSettingsChange }) {
   const { user, logout } = useAuth();
-  const isAdmin = user?.role === 'admin' || user?.role === 'main_admin';
+  const isMainAdmin = user?.role === 'main_admin';
+  const visibleTabs = isMainAdmin ? TABS : TABS.filter((tab) => tab.id !== 'danger');
   const navigate = useNavigate();
   const restoreInputRef = useRef(null);
   const [activeTab, setActiveTab] = useState('notifications');
@@ -151,8 +152,12 @@ export default function SettingsPage({ theme, onThemeChange, notificationSetting
         <div className="settings-content-stack">
           <div className="card"><div className="card-header"><h2>Data Management</h2></div><div className="card-body" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={() => openConfirm({ title: 'Export Sales Data', message: 'Export sales data to CSV now?', confirmText: 'Export', action: exportSalesCsv, tone: 'primary' })}><AppIcon icon={faDownload} /> Export Sales (CSV/Excel)</button>
-            <button className="btn btn-secondary" onClick={() => openConfirm({ title: 'Backup System Data', message: 'Create and download a backup file now?', confirmText: 'Create Backup', action: createBackup, tone: 'primary' })}><AppIcon icon={faFloppyDisk} /> Backup Data</button>
-            <button className="btn btn-secondary" onClick={() => restoreInputRef.current?.click()}><AppIcon icon={faRotateLeft} /> Restore Backup</button>
+            {isMainAdmin && (
+              <>
+                <button className="btn btn-secondary" onClick={() => openConfirm({ title: 'Backup System Data', message: 'Create and download a backup file now?', confirmText: 'Create Backup', action: createBackup, tone: 'primary' })}><AppIcon icon={faFloppyDisk} /> Backup Data</button>
+                <button className="btn btn-secondary" onClick={() => restoreInputRef.current?.click()}><AppIcon icon={faRotateLeft} /> Restore Backup</button>
+              </>
+            )}
             <input ref={restoreInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={(e) => handleRestore(e.target.files?.[0])} />
           </div></div>
         </div>
@@ -209,7 +214,7 @@ export default function SettingsPage({ theme, onThemeChange, notificationSetting
         </div></div>
       </div>
     );
-  }, [activeTab, notif, isAdmin, theme, onThemeChange, savingNotif, logout, navigate]);
+  }, [activeTab, notif, isMainAdmin, theme, onThemeChange, savingNotif, logout, navigate]);
 
   return (
     <div className="settings-page">
@@ -217,7 +222,7 @@ export default function SettingsPage({ theme, onThemeChange, notificationSetting
         <div className="card-header"><h2>System Settings</h2></div>
         <div className="settings-layout">
           <aside className="settings-tabs">
-            {TABS.map((tab) => (
+            {visibleTabs.map((tab) => (
               <button key={tab.id} className={`settings-tab ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
                 <AppIcon icon={tab.icon} className="settings-tab-icon" /> {tab.label}
               </button>
