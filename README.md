@@ -33,7 +33,8 @@ privacy requirements. Images will be added here after review.
   workflows.
 - **Presentation details:** responsive layouts, light/dark themes, accessible
   chart interactions, and a client-only sample preview for the dashboard and
-  analytics page.
+  analytics page, plus an optional first-visit guided tour with replay controls
+  for recruiters and other evaluators.
 
 The sample previews are generated in the browser and do not write to MongoDB.
 
@@ -147,4 +148,6 @@ files. `REACT_APP_*` frontend values are embedded at build time.
 ## Project documentation
 
 - [Architecture and data flows](docs/ARCHITECTURE.md)
+- [Role permissions](docs/ROLE_PERMISSIONS.md)
+- [RxNorm medicine reference lookup](docs/RXNORM.md)
 - [Screenshot checklist](docs/SCREENSHOTS.md)

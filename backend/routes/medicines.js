@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const Medicine = require('../models/Medicine');
 const { protect, adminOnly } = require('../middleware/auth');
+const {
+  searchRxNorm,
+  validateRxNormQuery,
+} = require('../services/rxnorm');
 
 // All medicine routes require authentication
 router.use(protect);
@@ -25,16 +29,47 @@ const toDateKey = (value) => {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 };
 
+const addStockToBatch = async (batch, quantity) =>
+  Medicine.findByIdAndUpdate(
+    batch._id,
+    { $inc: { stock: quantity } },
+    { new: true, runValidators: true },
+  );
+
+// GET /api/medicines/catalog/search?q=...
+router.get('/catalog/search', async (req, res) => {
+  const query = validateRxNormQuery(req.query.q);
+  if (!query) {
+    return res.status(400).json({
+      success: false,
+      message: 'Search must be between 2 and 100 characters.',
+    });
+  }
+
+  try {
+    const results = await searchRxNorm(query);
+    res.json({ success: true, data: results });
+  } catch (error) {
+    console.error('RxNorm search error:', error.message);
+    res.status(502).json({
+      success: false,
+      message: 'Medicine reference search is temporarily unavailable. You can enter the medicine manually.',
+    });
+  }
+});
+
 // GET /api/medicines
 router.get('/', async (req, res) => {
   try {
     const { search, filter, status = 'active', page = 1, limit = 50 } = req.query;
 
-    let query = {};
-
-    if (status === 'active' || status === 'inactive') {
-      query.status = status;
+    if (!['active', 'inactive'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid medicine status filter.' });
     }
+    if (req.user.role === 'pharmacist' && status === 'inactive') {
+      return res.status(403).json({ success: false, message: 'Inactive medicines are available to admins only.' });
+    }
+    const query = { status };
 
     // Text search
     if (search && search.trim()) {
@@ -55,7 +90,7 @@ router.get('/', async (req, res) => {
     const skip = (Number(page) - 1) * Number(limit);
     const total = await Medicine.countDocuments(query);
     const medicines = await Medicine.find(query)
-      .sort({ name: 1 })
+      .sort({ normalizedName: 1, expiryDate: 1, batchNumberNormalized: 1 })
       .skip(skip)
       .limit(Number(limit));
 
@@ -93,6 +128,9 @@ router.get('/:id', async (req, res) => {
     if (!medicine) {
       return res.status(404).json({ success: false, message: 'Medicine not found.' });
     }
+    if (req.user.role === 'pharmacist' && medicine.status === 'inactive') {
+      return res.status(404).json({ success: false, message: 'Medicine not found.' });
+    }
     res.json({ success: true, data: medicine });
   } catch (error) {
     if (error.name === 'CastError') {
@@ -105,7 +143,16 @@ router.get('/:id', async (req, res) => {
 // POST /api/medicines
 router.post('/', pharmacistOrAdminOnly, async (req, res) => {
   try {
-    const { name, price, buyingPrice, batchNumber, stock, expiryDate } = req.body;
+    const {
+      name,
+      price,
+      buyingPrice,
+      batchNumber,
+      stock,
+      expiryDate,
+      rxnormCui,
+      rxnormTty,
+    } = req.body;
 
     // Validate
     if (!name || !String(name).trim()) {
@@ -126,19 +173,40 @@ router.post('/', pharmacistOrAdminOnly, async (req, res) => {
     if (!expiryDate || isNaN(Date.parse(expiryDate))) {
       return res.status(400).json({ success: false, message: 'A valid expiry date is required.' });
     }
+    if (
+      (rxnormCui != null || rxnormTty != null) &&
+      (!/^\d+$/.test(String(rxnormCui || '')) || !['SCD', 'SBD'].includes(rxnormTty))
+    ) {
+      return res.status(400).json({ success: false, message: 'Invalid RxNorm reference.' });
+    }
 
     const normalizedName = normalizeText(name);
     const normalizedBatch = normalizeBatch(batchNumber);
     const expiryDateKey = toDateKey(expiryDate);
 
     // Duplicate check (same product + batch + expiry)
-    const existing = await Medicine.findOne({
+    const batchKey = {
       productKey: normalizedName,
       batchNumberNormalized: normalizedBatch,
       expiryDateKey,
-    });
+    };
+    const existing = await Medicine.findOne(batchKey);
     if (existing) {
-      return res.status(409).json({ success: false, message: `Medicine batch "${name.trim()} / ${String(batchNumber).trim()}" already exists for that expiry date.` });
+      const updatedMedicine = await addStockToBatch(
+        existing,
+        Math.floor(Number(stock)),
+      );
+      if (!updatedMedicine) {
+        return res.status(409).json({
+          success: false,
+          message: 'The medicine batch changed while stock was being added. Please try again.',
+        });
+      }
+      return res.json({
+        success: true,
+        message: 'Stock added to the existing medicine batch.',
+        data: updatedMedicine,
+      });
     }
 
     const medicine = await Medicine.create({
@@ -152,13 +220,45 @@ router.post('/', pharmacistOrAdminOnly, async (req, res) => {
       stock: Math.floor(Number(stock)),
       expiryDate: new Date(expiryDate),
       expiryDateKey,
+      rxnormCui: rxnormCui || null,
+      rxnormTty: rxnormTty || null,
       status: 'active',
     });
 
     res.status(201).json({ success: true, message: 'Medicine added successfully.', data: medicine });
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(409).json({ success: false, message: 'Medicine name already exists.' });
+      try {
+        const existing = await Medicine.findOne({
+          productKey: normalizeText(req.body.name),
+          batchNumberNormalized: normalizeBatch(req.body.batchNumber),
+          expiryDateKey: toDateKey(req.body.expiryDate),
+        });
+        if (existing) {
+          const medicine = await addStockToBatch(
+            existing,
+            Math.floor(Number(req.body.stock)),
+          );
+          if (!medicine) {
+            return res.status(409).json({
+              success: false,
+              message: 'The medicine batch changed while stock was being added. Please try again.',
+            });
+          }
+          return res.json({
+            success: true,
+            message: 'Stock added to the existing medicine batch.',
+            data: medicine,
+          });
+        }
+      } catch (retryError) {
+        console.error('Restock medicine error:', retryError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to add stock to the existing medicine batch.',
+        });
+      }
+      return res.status(409).json({ success: false, message: 'Medicine batch already exists.' });
     }
     console.error('Create medicine error:', error);
     res.status(500).json({ success: false, message: 'Failed to add medicine.' });
@@ -168,7 +268,16 @@ router.post('/', pharmacistOrAdminOnly, async (req, res) => {
 // PUT /api/medicines/:id
 router.put('/:id', pharmacistOrAdminOnly, async (req, res) => {
   try {
-    const { name, price, buyingPrice, batchNumber, stock, expiryDate } = req.body;
+    const {
+      name,
+      price,
+      buyingPrice,
+      batchNumber,
+      stock,
+      expiryDate,
+      rxnormCui,
+      rxnormTty,
+    } = req.body;
 
     if (name !== undefined && !String(name).trim()) {
       return res.status(400).json({ success: false, message: 'Medicine name cannot be empty.' });
@@ -187,6 +296,20 @@ router.put('/:id', pharmacistOrAdminOnly, async (req, res) => {
     }
     if (expiryDate !== undefined && isNaN(Date.parse(expiryDate))) {
       return res.status(400).json({ success: false, message: 'Invalid expiry date.' });
+    }
+    if (
+      (rxnormCui !== undefined || rxnormTty !== undefined) &&
+      rxnormCui !== null &&
+      (!/^\d+$/.test(String(rxnormCui || '')) || !['SCD', 'SBD'].includes(rxnormTty))
+    ) {
+      return res.status(400).json({ success: false, message: 'Invalid RxNorm reference.' });
+    }
+    if (
+      (rxnormCui !== undefined || rxnormTty !== undefined) &&
+      (rxnormCui === null || rxnormTty === null) &&
+      !(rxnormCui === null && rxnormTty === null)
+    ) {
+      return res.status(400).json({ success: false, message: 'RxNorm reference ID and type must be provided together.' });
     }
 
     const existingMedicine = await Medicine.findById(req.params.id);
@@ -225,6 +348,10 @@ router.put('/:id', pharmacistOrAdminOnly, async (req, res) => {
     if (stock !== undefined) updates.stock = Math.floor(Number(stock));
     if (expiryDate !== undefined) updates.expiryDate = new Date(expiryDate);
     updates.expiryDateKey = nextExpiryDateKey;
+    if (rxnormCui !== undefined || rxnormTty !== undefined) {
+      updates.rxnormCui = rxnormCui;
+      updates.rxnormTty = rxnormTty;
+    }
 
     const medicine = await Medicine.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
     if (!medicine) {

@@ -21,6 +21,17 @@ const medicineSchema = new mongoose.Schema(
       trim: true,
       maxlength: [200, "Medicine name must not exceed 200 characters"],
     },
+    rxnormCui: {
+      type: String,
+      trim: true,
+      match: /^\d+$/,
+      default: null,
+    },
+    rxnormTty: {
+      type: String,
+      enum: ["SCD", "SBD", null],
+      default: null,
+    },
     normalizedName: {
       type: String,
       required: true,

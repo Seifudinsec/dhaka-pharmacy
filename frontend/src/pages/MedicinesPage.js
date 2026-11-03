@@ -58,7 +58,22 @@ const MedicineModal = ({ medicine, onClose, onSaved }) => {
     exists: false,
     checked: false,
   });
+  const [rxnormTerm, setRxnormTerm] = useState("");
+  const [rxnormResults, setRxnormResults] = useState([]);
+  const [rxnormStatus, setRxnormStatus] = useState({
+    loading: false,
+    searched: false,
+    error: "",
+  });
+  const [selectedRxNorm, setSelectedRxNorm] = useState(
+    medicine?.rxnormCui && medicine?.rxnormTty
+      ? { rxcui: medicine.rxnormCui, tty: medicine.rxnormTty }
+      : null,
+  );
   const debouncedName = useDebounce(form.name, 400);
+  const debouncedRxnormTerm = useDebounce(rxnormTerm, 350);
+  const rxnormQueryCurrent =
+    rxnormTerm.trim() === debouncedRxnormTerm.trim();
 
   useEffect(() => {
     const checkName = async () => {
@@ -84,6 +99,42 @@ const MedicineModal = ({ medicine, onClose, onSaved }) => {
     };
     checkName();
   }, [debouncedName, medicine]);
+
+  useEffect(() => {
+    const query = debouncedRxnormTerm.trim();
+    if (medicine || query.length < 2 || query.length > 100) {
+      setRxnormResults([]);
+      setRxnormStatus({ loading: false, searched: false, error: "" });
+      return undefined;
+    }
+
+    let active = true;
+    setRxnormStatus({ loading: true, searched: false, error: "" });
+    api
+      .get("/medicines/catalog/search", { params: { q: query } })
+      .then(({ data }) => {
+        if (!active) return;
+        setRxnormResults(data.data || []);
+        setRxnormStatus({ loading: false, searched: true, error: "" });
+      })
+      .catch((error) => {
+        if (!active) return;
+        setRxnormResults([]);
+        setRxnormStatus({
+          loading: false,
+          searched: true,
+          error:
+            (error.response?.status === 404
+              ? "The backend serving this app does not have RxNorm search yet. Restart the local backend or deploy the latest backend changes."
+              : error.response?.data?.message) ||
+            "Reference search is unavailable. You can enter the medicine manually.",
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [debouncedRxnormTerm, medicine]);
 
   const validate = () => {
     const e = {};
@@ -120,13 +171,15 @@ const MedicineModal = ({ medicine, onClose, onSaved }) => {
         buyingPrice: Number(form.buyingPrice),
         stock: Number(form.stock),
         expiryDate: form.expiryDate,
+        rxnormCui: selectedRxNorm?.rxcui || null,
+        rxnormTty: selectedRxNorm?.tty || null,
       };
       if (medicine) {
         await api.put(`/medicines/${medicine._id}`, payload);
         toast.success("Medicine updated.");
       } else {
-        await api.post("/medicines", payload);
-        toast.success("Medicine added.");
+        const { data } = await api.post("/medicines", payload);
+        toast.success(data.message || "Medicine added.");
       }
       onSaved();
     } catch (err) {
@@ -138,7 +191,17 @@ const MedicineModal = ({ medicine, onClose, onSaved }) => {
 
   const set = (field, val) => {
     setForm((f) => ({ ...f, [field]: val }));
+    if (field === "name" && selectedRxNorm) setSelectedRxNorm(null);
     setErrors((e) => ({ ...e, [field]: "" }));
+  };
+
+  const selectRxNormMedicine = (result) => {
+    setSelectedRxNorm({ rxcui: result.rxcui, tty: result.tty });
+    setForm((current) => ({ ...current, name: result.name }));
+    setErrors((current) => ({ ...current, name: "" }));
+    setRxnormTerm("");
+    setRxnormResults([]);
+    setRxnormStatus({ loading: false, searched: false, error: "" });
   };
 
   return (
@@ -158,10 +221,93 @@ const MedicineModal = ({ medicine, onClose, onSaved }) => {
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
+            {!medicine && (
+              <div className="rxnorm-lookup">
+                <label htmlFor="rxnorm-search" className="form-label">
+                  Find a medicine reference
+                </label>
+                <input
+                  id="rxnorm-search"
+                  className="form-control"
+                  type="search"
+                  value={rxnormTerm}
+                  onChange={(event) => setRxnormTerm(event.target.value)}
+                  placeholder="Search generic or product name"
+                  maxLength={100}
+                  autoComplete="off"
+                />
+                {selectedRxNorm && (
+                  <div className="rxnorm-selected">
+                    RxNorm reference selected · RxCUI {selectedRxNorm.rxcui}
+                  </div>
+                )}
+                <p className="rxnorm-note">
+                  Suggestions use U.S.-focused RxNorm data and do not verify
+                  Kenyan registration or product availability.
+                </p>
+                <details className="rxnorm-attribution">
+                  <summary>NLM attribution</summary>
+                  <p>
+                    This product uses publicly available data courtesy of the
+                    U.S. National Library of Medicine (NLM), National
+                    Institutes of Health, Department of Health and Human
+                    Services; NLM is not responsible for the product and does
+                    not endorse or recommend this or any other product.
+                  </p>
+                </details>
+                {rxnormTerm.trim().length === 1 && (
+                  <div className="form-hint">Enter at least 2 characters.</div>
+                )}
+                {rxnormQueryCurrent && rxnormStatus.loading && (
+                  <div className="rxnorm-feedback" role="status">
+                    <span className="spinner spinner-sm" />
+                    Searching RxNorm…
+                  </div>
+                )}
+                {rxnormQueryCurrent && rxnormStatus.error && (
+                  <div className="rxnorm-feedback error" role="status">
+                    {rxnormStatus.error}
+                  </div>
+                )}
+                {rxnormStatus.searched &&
+                  rxnormQueryCurrent &&
+                  !rxnormStatus.error &&
+                  !rxnormResults.length && (
+                    <div className="rxnorm-feedback" role="status">
+                      No RxNorm medicine matches. You can enter the name below.
+                    </div>
+                  )}
+                {rxnormQueryCurrent && !!rxnormResults.length && (
+                  <div className="rxnorm-results" role="listbox" aria-label="RxNorm suggestions">
+                    {rxnormResults.map((result) => (
+                      <button
+                        key={result.rxcui}
+                        type="button"
+                        className="rxnorm-result"
+                        role="option"
+                        aria-selected={selectedRxNorm?.rxcui === result.rxcui}
+                        onClick={() => selectRxNormMedicine(result)}
+                      >
+                        <span className="rxnorm-result-name">{result.name}</span>
+                        <span className="rxnorm-result-meta">
+                          {result.synonym && <span>{result.synonym}</span>}
+                          <span>{result.tty === "SBD" ? "Branded drug" : "Generic drug"}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="form-group">
               <label htmlFor="modal-name" className="form-label">
                 Name <span className="required">*</span>
               </label>
+              {selectedRxNorm && (
+                <div className="rxnorm-selected name-reference">
+                  Linked to RxNorm · RxCUI {selectedRxNorm.rxcui}
+                </div>
+              )}
               <input
                 id="modal-name"
                 className={`form-control${errors.name ? " error" : ""}`}
@@ -581,6 +727,7 @@ export default function MedicinesPage() {
             {statusTab === "active" && (
               <button
                 className="btn btn-primary"
+                data-tour="medicine-add"
                 onClick={() => setModal({ type: "add" })}
               >
                 <AppIcon icon={faPlus} /> Add Medicine
@@ -593,7 +740,7 @@ export default function MedicinesPage() {
           <div className="filter-tabs">
             {[
               ["active", "Active Medicines"],
-              ["inactive", "Inactive Medicines"],
+              ...(isAdmin ? [["inactive", "Inactive Medicines"]] : []),
             ].map(([val, label]) => (
               <button
                 key={val}
