@@ -190,6 +190,7 @@ export default function BillingPage() {
               </span>
               <input
                 className="form-control w-100"
+                data-tour="billing-search"
                 placeholder="Search medicines..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}

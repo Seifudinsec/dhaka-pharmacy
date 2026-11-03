@@ -440,11 +440,21 @@ function Sparkline({ points, metric, color, label, emptyMessage }) {
   const min = Math.min(0, ...values);
   const max = Math.max(0, ...values);
   const spread = max - min || 1;
-  const width = 260;
-  const height = 70;
+  const width = 560;
+  const height = 118;
+  const plot = { left: 58, right: 8, top: 10, bottom: 24 };
+  const plotWidth = width - plot.left - plot.right;
+  const plotHeight = height - plot.top - plot.bottom;
   const sparkX = (index) =>
-    values.length <= 1 ? width / 2 : (index / (values.length - 1)) * width;
-  const sparkY = (value) => 8 + ((max - value) / spread) * (height - 16);
+    values.length <= 1
+      ? width / 2
+      : plot.left + (index / (values.length - 1)) * plotWidth;
+  const sparkY = (value) => plot.top + ((max - value) / spread) * plotHeight;
+  const scaleLabel = (value) =>
+    metric === "sales"
+      ? Math.round(value).toLocaleString()
+      : formatKes(value, true).replace("KES ", "");
+  const gridValues = [max, (max + min) / 2, min];
   const activeIndexes = values.flatMap((value, index) =>
     value === 0 ? [] : [index],
   );
@@ -462,6 +472,10 @@ function Sparkline({ points, metric, color, label, emptyMessage }) {
     });
   };
   const activePoint = activeIndex === null ? null : points[activeIndex];
+  const tooltipLeft =
+    activeIndex === null
+      ? null
+      : Math.max(12, Math.min(88, (sparkX(activeIndex) / width) * 100));
   const path = values
     .map((value, index) => {
       return `${index === 0 ? "M" : "L"} ${sparkX(index)} ${sparkY(value)}`;
@@ -469,7 +483,7 @@ function Sparkline({ points, metric, color, label, emptyMessage }) {
     .join(" ");
   const areaPath =
     values.length > 1 && activeIndexes.length > 1
-      ? `${path} L ${width} ${height - 5} L 0 ${height - 5} Z`
+      ? `${path} L ${width - plot.right} ${sparkY(0)} L ${plot.left} ${sparkY(0)} Z`
       : null;
   if (!values.length || !values.some((value) => value !== 0)) {
     return <div className="reports-empty-sparkline">{emptyMessage}</div>;
@@ -491,7 +505,19 @@ function Sparkline({ points, metric, color, label, emptyMessage }) {
           0,
           Math.min(
             points.length - 1,
-            Math.round((viewBoxX / width) * (points.length - 1)),
+            Math.round(((viewBoxX - plot.left) / plotWidth) * (points.length - 1)),
+          ),
+        );
+        setActiveIndex(index);
+      }}
+      onPointerDown={(event) => {
+        const bounds = event.currentTarget.getBoundingClientRect();
+        const viewBoxX = ((event.clientX - bounds.left) / bounds.width) * width;
+        const index = Math.max(
+          0,
+          Math.min(
+            points.length - 1,
+            Math.round(((viewBoxX - plot.left) / plotWidth) * (points.length - 1)),
           ),
         );
         setActiveIndex(index);
@@ -505,6 +531,25 @@ function Sparkline({ points, metric, color, label, emptyMessage }) {
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
+      {gridValues.map((value, index) => (
+        <g key={index}>
+          <line
+            x1={plot.left}
+            x2={width - plot.right}
+            y1={sparkY(value)}
+            y2={sparkY(value)}
+            className={index === 2 ? "reports-sparkline-grid reports-sparkline-zero" : "reports-sparkline-grid"}
+          />
+          <text
+            x={plot.left - 8}
+            y={sparkY(value) + 3}
+            textAnchor="end"
+            className="reports-sparkline-scale"
+          >
+            {scaleLabel(value)}
+          </text>
+        </g>
+      ))}
       {areaPath && <path d={areaPath} fill={`url(#reports-spark-fill-${metric})`} />}
       {activeIndexes.length > 1 && (
         <path d={path} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" pathLength="1" className="reports-chart-line" />
@@ -522,13 +567,24 @@ function Sparkline({ points, metric, color, label, emptyMessage }) {
           <title>{label}: {numberOrZero(values[activeIndexes[0]])}</title>
         </circle>
       )}
+      {activeIndexes.length > 1 &&
+        activeIndexes.map((index) => (
+          <circle
+            key={points[index].date || index}
+            cx={sparkX(index)}
+            cy={sparkY(values[index])}
+            r="2.5"
+            fill={color}
+            className="reports-sparkline-point"
+          />
+        ))}
       {activeIndex !== null && (
         <g className="reports-sparkline-active">
           <line
             x1={sparkX(activeIndex)}
             x2={sparkX(activeIndex)}
-            y1="4"
-            y2={height - 4}
+            y1={plot.top}
+            y2={height - plot.bottom}
             className="reports-chart-crosshair"
           />
           <circle
@@ -542,8 +598,16 @@ function Sparkline({ points, metric, color, label, emptyMessage }) {
         </g>
       )}
     </svg>
+    <div className="reports-sparkline-axis">
+      <span>{points[0]?.label || ""}</span>
+      <span>{points[points.length - 1]?.label || ""}</span>
+    </div>
     {activePoint && (
-      <div className="reports-sparkline-tooltip" role="status">
+      <div
+        className="reports-sparkline-tooltip"
+        style={{ left: `${tooltipLeft}%` }}
+        role="status"
+      >
         <strong>{activePoint.label}</strong>
         <span>{metric === "sales" ? `${numberOrZero(activePoint[metric])} transactions` : formatKes(activePoint[metric])}</span>
       </div>
@@ -1218,6 +1282,7 @@ const ReportsPage = () => {
           <button
             type="button"
             className="btn btn-secondary reports-preview-button"
+            data-tour="reports-preview"
             onClick={() => setSamplePreviewMode(!samplePreview)}
             disabled={loading}
             aria-pressed={samplePreview}

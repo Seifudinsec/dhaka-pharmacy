@@ -116,6 +116,7 @@ function getSalesChartScale(maxValue) {
 }
 
 function StockHealthChart({ stockHealth = {} }) {
+  const [activeKey, setActiveKey] = useState(null);
   const total = STOCK_HEALTH_SEGMENTS.reduce(
     (sum, segment) => sum + Number(stockHealth[segment.key] || 0),
     0,
@@ -129,9 +130,14 @@ function StockHealthChart({ stockHealth = {} }) {
     offset += length;
     return current;
   });
+  const activeSegment = segments.find((segment) => segment.key === activeKey);
 
   return (
-    <section className="dashboard-chart-card dashboard-chart-donut" aria-labelledby="stock-health-title">
+    <section
+      className="dashboard-chart-card dashboard-chart-donut"
+      aria-labelledby="stock-health-title"
+      data-tour="dashboard-charts"
+    >
       <div className="dashboard-chart-heading">
         <div>
           <span className="dashboard-section-kicker">INVENTORY MIX</span>
@@ -142,10 +148,11 @@ function StockHealthChart({ stockHealth = {} }) {
       <div className="dashboard-donut-layout">
         <div
           className="dashboard-donut"
-          role="img"
+          role="group"
           aria-label={`Inventory health across ${total} medicine batches`}
+          onMouseLeave={() => setActiveKey(null)}
         >
-          <svg viewBox="0 0 180 180" aria-hidden="true">
+          <svg viewBox="0 0 180 180">
             <circle className="dashboard-donut-track" cx="90" cy="90" r="72" />
             {segments.map((segment, index) =>
               segment.value > 0 ? (
@@ -160,24 +167,46 @@ function StockHealthChart({ stockHealth = {} }) {
                   strokeDasharray={`${segment.length} ${circumference - segment.length}`}
                   strokeDashoffset={-segment.offset}
                   className="dashboard-donut-segment"
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`${segment.label}: ${segment.value} batches, ${total ? Math.round((segment.value / total) * 100) : 0}%`}
+                  onMouseEnter={() => setActiveKey(segment.key)}
+                  onFocus={() => setActiveKey(segment.key)}
+                  onBlur={() => setActiveKey(null)}
+                  onClick={() =>
+                    setActiveKey((current) =>
+                      current === segment.key ? null : segment.key,
+                    )
+                  }
                   style={{
                     "--segment-length": segment.length,
                     "--segment-gap": circumference - segment.length,
                     "--segment-delay": `${index * 70}ms`,
+                    "--segment-opacity": activeKey && activeKey !== segment.key ? 0.42 : 1,
+                    "--segment-width": activeKey === segment.key ? "28px" : "22px",
                   }}
                 />
               ) : null,
             )}
           </svg>
           <div className="dashboard-donut-center">
-            <span>Total</span>
-            <strong>{total.toLocaleString()}</strong>
-            <small>batches</small>
+            <span>{activeSegment?.label || "Total"}</span>
+            <strong>{(activeSegment?.value ?? total).toLocaleString()}</strong>
+            <small>
+              {activeSegment
+                ? `${total ? Math.round((activeSegment.value / total) * 100) : 0}% of batches`
+                : "batches"}
+            </small>
           </div>
         </div>
-        <ul className="dashboard-chart-legend">
+        <ul className={`dashboard-chart-legend${activeKey ? " has-active" : ""}`}>
           {segments.map((segment) => (
-            <li key={segment.key}>
+            <li
+              key={segment.key}
+              className={activeKey === segment.key ? "active" : ""}
+              onMouseEnter={() => setActiveKey(segment.key)}
+              onMouseLeave={() => setActiveKey(null)}
+            >
               <span className="dashboard-legend-name">
                 <span
                   className="dashboard-legend-swatch"
@@ -297,7 +326,33 @@ export default function Dashboard() {
   const isInitialLoading = loading && !stats && !samplePreview;
   const showSkeletons = isInitialLoading && showLoader;
   const sampleStats = useMemo(() => createSampleDashboardStats(), []);
-  const displayStats = samplePreview ? sampleStats : stats;
+  const displayStats = useMemo(() => {
+    if (!samplePreview) return stats;
+    if (isAdmin) return sampleStats;
+
+    const operationalStats = { ...sampleStats };
+    delete operationalStats.inventoryValue;
+    delete operationalStats.totalRevenue;
+    delete operationalStats.todayProfit;
+    delete operationalStats.topProfitProducts;
+    delete operationalStats.potentialLossItems;
+    delete operationalStats.totalPotentialLoss;
+    const dailyTotals = [6240, 7180, 5930, 8460, 7820, 9340, 10120];
+    const dailyCounts = [4, 5, 3, 6, 5, 7, 8];
+    return {
+      ...operationalStats,
+      salesTrend: sampleStats.salesTrend.map((day, index) => ({
+        ...day,
+        total: dailyTotals[index],
+        count: dailyCounts[index],
+      })),
+      todaySales: { count: dailyCounts[dailyCounts.length - 1] },
+      recentSales: sampleStats.recentSales.slice(0, 2).map((sale) => ({
+        ...sale,
+        servedBy: { username: user?.username || "Pharmacist" },
+      })),
+    };
+  }, [samplePreview, stats, isAdmin, sampleStats, user?.username]);
   const setSamplePreviewMode = (enabled) => {
     setSamplePreview(enabled);
     const url = new URL(window.location.href);
@@ -411,6 +466,7 @@ export default function Dashboard() {
             <button
               type="button"
               className="dashboard-preview-button"
+              data-tour="dashboard-sample"
               onClick={() => setSamplePreviewMode(!samplePreview)}
               aria-pressed={samplePreview}
             >

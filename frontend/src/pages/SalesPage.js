@@ -232,7 +232,7 @@ export default function SalesPage() {
 
       <div className="card">
         <div className="card-header">
-          <h2>
+          <h2 data-tour="sales-summary">
             <AppIcon icon={faMoneyBillTrendUp} className="header-inline-icon" />{" "}
             Sales History
           </h2>
