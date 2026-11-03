@@ -11,6 +11,7 @@
     "dev": "nodemon server.js",
     "seed": "node config/seed.js",
     "seed:demo-users": "node scripts/seedDemoUsers.js",
+    "test": "node --test",
     "audit:sales-financials": "node scripts/auditSalesFinancials.js",
     "repair:sales-financials": "node scripts/repairSalesFinancials.js",
     "repair:sales-financials:apply": "node scripts/repairSalesFinancials.js --apply"

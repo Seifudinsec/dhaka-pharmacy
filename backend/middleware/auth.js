@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { isSupportedRole } = require('./authorization');
 
 const protect = async (req, res, next) => {
   try {
@@ -32,6 +33,12 @@ const protect = async (req, res, next) => {
       user.role = 'pharmacist';
       await user.save();
     }
+    if (!isSupportedRole(user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. This account has an unsupported role.',
+      });
+    }
     if (user.status === 'inactive') {
       return res.status(401).json({ success: false, message: 'Account is inactive. Please contact administrator.' });
     }
@@ -51,12 +58,6 @@ const protect = async (req, res, next) => {
   }
 };
 
-const adminOnly = (req, res, next) => {
-  if (req.user.role !== 'admin' && req.user.role !== 'main_admin') {
-    return res.status(403).json({ success: false, message: 'Access denied. Admins only.' });
-  }
-  next();
-};
+const { adminOnly, mainAdminOnly } = require('./authorization');
 
-module.exports = { protect, adminOnly };
-
+module.exports = { protect, adminOnly, mainAdminOnly };
