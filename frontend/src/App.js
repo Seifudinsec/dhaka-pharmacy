@@ -43,6 +43,7 @@ import AppIcon from "./components/common/AppIcon";
 import InstallAppButton from "./components/common/InstallAppButton";
 import NotificationBell from "./components/common/NotificationBell";
 import NotificationPopup from "./components/common/NotificationPopup";
+import GuidedTour from "./components/common/GuidedTour";
 import "./index.css";
 
 const getNavigationItems = (userRole) => {
@@ -185,6 +186,7 @@ const Sidebar = ({ open, onClose, theme, onThemeChange }) => {
 
 const AppLayout = ({ theme, setTheme }) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
@@ -292,6 +294,11 @@ const AppLayout = ({ theme, setTheme }) => {
             </h1>
           </div>
           <div className="header-actions">
+            <GuidedTour
+              user={user}
+              pathname={location.pathname}
+              navigate={navigate}
+            />
             {isOffline && (
               <div
                 className="offline-badge"
@@ -381,7 +388,8 @@ const AppLayout = ({ theme, setTheme }) => {
 };
 
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return null;
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 

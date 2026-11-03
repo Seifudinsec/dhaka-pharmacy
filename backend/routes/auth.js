@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { protect, adminOnly } = require('../middleware/auth');
+const { ROLES, isSupportedRole } = require('../middleware/authorization');
 
 const generateToken = (id, tokenVersion = 0) =>
   jwt.sign({ id, tokenVersion }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
@@ -32,12 +33,15 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid username or password.' });
     }
 
-    const token = generateToken(user._id, user.tokenVersion);
     const normalizedRole = user.role === 'cashier' ? 'pharmacist' : user.role;
+    if (!isSupportedRole(normalizedRole)) {
+      return res.status(403).json({ success: false, message: 'This account has an unsupported role.' });
+    }
     if (user.role === 'cashier') {
       user.role = 'pharmacist';
       await user.save();
     }
+    const token = generateToken(user._id, user.tokenVersion);
 
     res.json({
       success: true,
@@ -60,6 +64,13 @@ router.post('/login', async (req, res) => {
 router.post('/register', protect, adminOnly, async (req, res) => {
   try {
     const { username, password, role } = req.body;
+
+    if (!ROLES.includes(role) || role === 'main_admin') {
+      return res.status(400).json({ success: false, message: 'A valid assignable role is required.' });
+    }
+    if (req.user.role === 'admin' && role !== 'pharmacist') {
+      return res.status(403).json({ success: false, message: 'Admins can only register pharmacists.' });
+    }
 
     if (!username || !password) {
       return res.status(400).json({ success: false, message: 'Username and password are required.' });
@@ -84,7 +95,7 @@ router.post('/register', protect, adminOnly, async (req, res) => {
     const user = await User.create({
       username: trimmedUsername,
       password: hashedPassword,
-      role: ['admin', 'pharmacist'].includes(role) ? role : 'pharmacist',
+      role,
     });
 
     const token = generateToken(user._id, user.tokenVersion);
