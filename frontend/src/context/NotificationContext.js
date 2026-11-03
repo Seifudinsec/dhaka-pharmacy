@@ -168,6 +168,7 @@ export function NotificationProvider({ children }) {
 
     const socket = io(
       process.env.REACT_APP_SOCKET_URL || window.location.origin,
+      { auth: { token: sessionStorage.getItem("dhaka_token") } },
     );
 
     socket.on("inventory_updated", ({ stockAlerts } = {}) => {
