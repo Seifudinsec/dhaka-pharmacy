@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const SpecialDrug = require('../models/SpecialDrug');
 const { protect, adminOnly } = require('../middleware/auth');
+const { ownerScope } = require('../middleware/authorization');
 const auditLog = require('../middleware/audit');
 
 router.use(protect);
@@ -10,14 +11,16 @@ router.use(protect);
 router.get('/', async (req, res) => {
   try {
     const { search, page = 1, limit = 20 } = req.query;
-    const query = {};
+    const query = ownerScope(req.user, 'recordedBy');
+    const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     if (search) {
+      const searchPattern = { $regex: escapeRegex(search), $options: 'i' };
       query.$or = [
-        { drugName: { $regex: search, $options: 'i' } },
-        { buyerName: { $regex: search, $options: 'i' } },
-        { buyerIdNumber: { $regex: search, $options: 'i' } },
-        { buyerPhoneNumber: { $regex: search, $options: 'i' } }
+        { drugName: searchPattern },
+        { buyerName: searchPattern },
+        { buyerIdNumber: searchPattern },
+        { buyerPhoneNumber: searchPattern }
       ];
     }
 
@@ -25,6 +28,7 @@ router.get('/', async (req, res) => {
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
     const skip = (safePage - 1) * safeLimit;
 
+    const saleFields = req.user.role === 'pharmacist' ? 'total createdAt' : undefined;
     const [total, records] = await Promise.all([
       SpecialDrug.countDocuments(query),
       SpecialDrug.find(query)
@@ -32,7 +36,7 @@ router.get('/', async (req, res) => {
         .skip(skip)
         .limit(safeLimit)
         .populate('recordedBy', 'username')
-        .populate('sale')
+        .populate('sale', saleFields)
     ]);
 
     res.json({
@@ -76,8 +80,26 @@ router.post('/', auditLog('SPECIAL_DRUG_RECORD_CREATED', 'SpecialDrug'), async (
 // PUT /api/special-drugs/:id
 router.put('/:id', auditLog('SPECIAL_DRUG_RECORD_UPDATED', 'SpecialDrug'), async (req, res) => {
   try {
-    const record = await SpecialDrug.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const record = await SpecialDrug.findById(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Record not found.' });
+    if (
+      req.user.role === 'pharmacist' &&
+      String(record.recordedBy) !== String(req.user._id)
+    ) {
+      return res.status(403).json({ success: false, message: 'You can only update your own records.' });
+    }
+
+    const allowedFields = ['drugName', 'buyerName', 'buyerIdNumber', 'buyerPhoneNumber', 'prescription'];
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    if (Object.keys(updates).length !== Object.keys(req.body).length) {
+      return res.status(400).json({ success: false, message: 'Unsupported record field.' });
+    }
+
+    Object.assign(record, updates);
+    await record.save();
     res.json({ success: true, data: record });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to update record.' });
