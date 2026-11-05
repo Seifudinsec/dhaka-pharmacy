@@ -6,6 +6,7 @@ import {
   faArrowRight,
   faCircleQuestion,
 } from "@fortawesome/free-solid-svg-icons";
+import toast from "react-hot-toast";
 import AppIcon from "./AppIcon";
 
 const TOUR_STORAGE_KEY = "dhaka_pharmacy_tour_v1";
@@ -234,6 +235,15 @@ export default function GuidedTour({ user, pathname, navigate }) {
       });
     };
 
+    const handleViewportChange = () => {
+      const target = document.querySelector(step.target);
+      if (target) updateSpotlight(target);
+    };
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(handleViewportChange);
+
     const findTarget = () => {
       if (disposed) return;
       const target = document.querySelector(step.target);
@@ -244,9 +254,13 @@ export default function GuidedTour({ user, pathname, navigate }) {
         } else {
           setActive(false);
           setSpotlight(null);
+          toast.error(
+            "This tour step is unavailable on the current screen. You can try the tour again from the Tour button.",
+          );
         }
         return;
       }
+      resizeObserver?.observe(target);
 
       if (!enteredStepsRef.current.has(stepIndex)) {
         enteredStepsRef.current.add(stepIndex);
@@ -254,7 +268,14 @@ export default function GuidedTour({ user, pathname, navigate }) {
           step.enter === "enable-sample-preview" &&
           target.getAttribute("aria-pressed") !== "true"
         ) {
-          target.click();
+          const appRoot = document.getElementById("root");
+          const wasInert = appRoot?.inert ?? false;
+          if (appRoot) appRoot.inert = false;
+          try {
+            target.click();
+          } finally {
+            if (appRoot) appRoot.inert = wasInert;
+          }
         }
       }
 
