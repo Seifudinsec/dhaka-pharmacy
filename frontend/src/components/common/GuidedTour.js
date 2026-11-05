@@ -216,7 +216,7 @@ export default function GuidedTour({ user, pathname, navigate }) {
               : Math.max(
                   margin,
                   Math.min(
-                    window.innerHeight - cardRect.height - margin,
+                    viewportHeight - cardRect.height - margin,
                     spot.top + spot.height / 2 - cardRect.height / 2,
                   ),
                 );
@@ -464,11 +464,11 @@ export default function GuidedTour({ user, pathname, navigate }) {
                 style={{
                   top: Math.min(
                     spotlight.top + spotlight.height - 2,
-                    window.innerHeight - 34,
+                    (window.visualViewport?.height || window.innerHeight) - 34,
                   ),
                   left: Math.min(
                     spotlight.left + spotlight.width - 2,
-                    window.innerWidth - 34,
+                    document.documentElement.clientWidth - 34,
                   ),
                 }}
               >
