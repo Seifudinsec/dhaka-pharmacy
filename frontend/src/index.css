@@ -852,6 +852,8 @@ body {
 }
 
 .guided-tour-welcome {
+    max-height: calc(100dvh - 40px);
+    overflow-y: auto;
     animation: guided-tour-enter 220ms ease-out both;
 }
 
