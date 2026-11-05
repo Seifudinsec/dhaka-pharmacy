@@ -239,7 +239,11 @@ function WeeklySalesChart({ salesTrend = [] }) {
   );
 
   return (
-    <section className="dashboard-chart-card dashboard-chart-sales" aria-labelledby="weekly-sales-title">
+    <section
+      className="dashboard-chart-card dashboard-chart-sales"
+      aria-labelledby="weekly-sales-title"
+      data-tour="dashboard-sales-chart"
+    >
       <div className="dashboard-chart-heading">
         <div>
           <span className="dashboard-section-kicker">SALES ACTIVITY</span>
