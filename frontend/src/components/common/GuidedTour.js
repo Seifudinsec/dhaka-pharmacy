@@ -6,6 +6,7 @@ import {
   faArrowRight,
   faCircleQuestion,
 } from "@fortawesome/free-solid-svg-icons";
+import toast from "react-hot-toast";
 import AppIcon from "./AppIcon";
 
 const TOUR_STORAGE_KEY = "dhaka_pharmacy_tour_v1";
@@ -24,8 +25,15 @@ const getTourSteps = (isAdmin) => [
     path: "/",
     target: '[data-tour="dashboard-charts"]',
     eyebrow: "AT-A-GLANCE INSIGHTS",
-    title: "Explore inventory and sales trends",
-    body: "The charts summarize stock health and recent sales. Hover, focus, or tap chart details to inspect the values.",
+    title: "Understand inventory health",
+    body: "This chart groups batches by stock status. Read the legend to compare batch counts and percentages across categories.",
+  },
+  {
+    path: "/",
+    target: '[data-tour="dashboard-sales-chart"]',
+    eyebrow: "SALES ACTIVITY",
+    title: "Spot the weekly sales pattern",
+    body: "Compare daily sales across the last seven days for a quick view of recent activity.",
   },
   {
     path: "/medicines",
@@ -100,6 +108,24 @@ export default function GuidedTour({ user, pathname, navigate }) {
   const enteredStepsRef = useRef(new Set());
 
   useEffect(() => {
+    if (!active && !welcomeOpen) return undefined;
+    const appRoot = document.getElementById("root");
+    const wasInert = appRoot?.inert ?? false;
+    if (appRoot) appRoot.inert = true;
+
+    const frame = window.requestAnimationFrame(() => {
+      if (active) nextButtonRef.current?.focus({ preventScroll: true });
+      else welcomeRef.current?.querySelector("button:not(:disabled)")?.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (appRoot) appRoot.inert = wasInert;
+      window.requestAnimationFrame(() => launcherRef.current?.focus());
+    };
+  }, [active, welcomeOpen]);
+
+  useEffect(() => {
     if (!user || readTourStatus()) return undefined;
     const timer = window.setTimeout(() => setWelcomeOpen(true), 500);
     return () => window.clearTimeout(timer);
@@ -109,7 +135,6 @@ export default function GuidedTour({ user, pathname, navigate }) {
     saveTourStatus(status);
     setActive(false);
     setSpotlight(null);
-    window.requestAnimationFrame(() => launcherRef.current?.focus());
   }, []);
 
   const startTour = () => {
@@ -124,7 +149,6 @@ export default function GuidedTour({ user, pathname, navigate }) {
   const dismissWelcome = () => {
     saveTourStatus("dismissed");
     setWelcomeOpen(false);
-    window.requestAnimationFrame(() => launcherRef.current?.focus());
   };
 
   useEffect(() => {
@@ -147,22 +171,24 @@ export default function GuidedTour({ user, pathname, navigate }) {
     const updateSpotlight = (target) => {
       if (disposed || !target.isConnected) return;
       const rect = target.getBoundingClientRect();
+      const viewportWidth = document.documentElement.clientWidth;
+      const viewportHeight = window.visualViewport?.height || window.innerHeight;
       const width = Math.min(
-        window.innerWidth - 16,
+        viewportWidth - 16,
         rect.width + SPOTLIGHT_PADDING * 2,
       );
       const height = Math.min(
-        window.innerHeight - 16,
+        viewportHeight - 16,
         rect.height + SPOTLIGHT_PADDING * 2,
       );
       const spot = {
         top: Math.max(
           8,
-          Math.min(rect.top - SPOTLIGHT_PADDING, window.innerHeight - height - 8),
+          Math.min(rect.top - SPOTLIGHT_PADDING, viewportHeight - height - 8),
         ),
         left: Math.max(
           8,
-          Math.min(rect.left - SPOTLIGHT_PADDING, window.innerWidth - width - 8),
+          Math.min(rect.left - SPOTLIGHT_PADDING, viewportWidth - width - 8),
         ),
         width,
         height,
@@ -173,11 +199,11 @@ export default function GuidedTour({ user, pathname, navigate }) {
         if (disposed || !cardRef.current) return;
         const cardRect = cardRef.current.getBoundingClientRect();
         const margin = 16;
-        const viewportWidth = document.documentElement.clientWidth;
+        const viewportHeight = window.visualViewport?.height || window.innerHeight;
         const belowTop = spot.top + spot.height + 16;
         const aboveTop = spot.top - cardRect.height - 16;
         const placement =
-          belowTop + cardRect.height <= window.innerHeight - margin
+          belowTop + cardRect.height <= viewportHeight - margin
             ? "below"
             : aboveTop >= margin
               ? "above"
@@ -190,7 +216,7 @@ export default function GuidedTour({ user, pathname, navigate }) {
               : Math.max(
                   margin,
                   Math.min(
-                    window.innerHeight - cardRect.height - margin,
+                    viewportHeight - cardRect.height - margin,
                     spot.top + spot.height / 2 - cardRect.height / 2,
                   ),
                 );
@@ -209,6 +235,15 @@ export default function GuidedTour({ user, pathname, navigate }) {
       });
     };
 
+    const handleViewportChange = () => {
+      const target = document.querySelector(step.target);
+      if (target) updateSpotlight(target);
+    };
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(handleViewportChange);
+
     const findTarget = () => {
       if (disposed) return;
       const target = document.querySelector(step.target);
@@ -219,9 +254,13 @@ export default function GuidedTour({ user, pathname, navigate }) {
         } else {
           setActive(false);
           setSpotlight(null);
+          toast.error(
+            "This tour step is unavailable on the current screen. You can try the tour again from the Tour button.",
+          );
         }
         return;
       }
+      resizeObserver?.observe(target);
 
       if (!enteredStepsRef.current.has(stepIndex)) {
         enteredStepsRef.current.add(stepIndex);
@@ -229,7 +268,14 @@ export default function GuidedTour({ user, pathname, navigate }) {
           step.enter === "enable-sample-preview" &&
           target.getAttribute("aria-pressed") !== "true"
         ) {
-          target.click();
+          const appRoot = document.getElementById("root");
+          const wasInert = appRoot?.inert ?? false;
+          if (appRoot) appRoot.inert = false;
+          try {
+            target.click();
+          } finally {
+            if (appRoot) appRoot.inert = wasInert;
+          }
         }
       }
 
@@ -245,33 +291,39 @@ export default function GuidedTour({ user, pathname, navigate }) {
     };
 
     findTarget();
-    const handleViewportChange = () => {
-      const target = document.querySelector(step.target);
-      if (target) updateSpotlight(target);
-    };
     window.addEventListener("resize", handleViewportChange);
     window.addEventListener("scroll", handleViewportChange, true);
+    window.visualViewport?.addEventListener("resize", handleViewportChange);
+    window.visualViewport?.addEventListener("scroll", handleViewportChange);
 
     return () => {
       disposed = true;
+      resizeObserver?.disconnect();
       window.clearTimeout(timer);
       window.cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", handleViewportChange);
       window.removeEventListener("scroll", handleViewportChange, true);
+      window.visualViewport?.removeEventListener("resize", handleViewportChange);
+      window.visualViewport?.removeEventListener("scroll", handleViewportChange);
     };
   }, [active, finishTour, navigate, pathname, stepIndex, steps]);
 
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active && !welcomeOpen) return undefined;
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        finishTour("dismissed");
+        if (active) {
+          finishTour("dismissed");
+        } else {
+          saveTourStatus("dismissed");
+          setWelcomeOpen(false);
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [active, finishTour]);
+  }, [active, finishTour, welcomeOpen]);
 
   useEffect(() => {
     if (!active && !welcomeOpen) return undefined;
@@ -412,11 +464,11 @@ export default function GuidedTour({ user, pathname, navigate }) {
                 style={{
                   top: Math.min(
                     spotlight.top + spotlight.height - 2,
-                    window.innerHeight - 34,
+                    (window.visualViewport?.height || window.innerHeight) - 34,
                   ),
                   left: Math.min(
                     spotlight.left + spotlight.width - 2,
-                    window.innerWidth - 34,
+                    document.documentElement.clientWidth - 34,
                   ),
                 }}
               >
