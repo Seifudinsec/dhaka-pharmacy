@@ -24,8 +24,15 @@ const getTourSteps = (isAdmin) => [
     path: "/",
     target: '[data-tour="dashboard-charts"]',
     eyebrow: "AT-A-GLANCE INSIGHTS",
-    title: "Explore inventory and sales trends",
-    body: "The charts summarize stock health and recent sales. Hover, focus, or tap chart details to inspect the values.",
+    title: "Understand inventory health",
+    body: "This chart groups batches by stock status. Read the legend to compare batch counts and percentages across categories.",
+  },
+  {
+    path: "/",
+    target: '[data-tour="dashboard-sales-chart"]',
+    eyebrow: "SALES ACTIVITY",
+    title: "Spot the weekly sales pattern",
+    body: "Compare daily sales across the last seven days for a quick view of recent activity.",
   },
   {
     path: "/medicines",
