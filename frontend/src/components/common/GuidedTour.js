@@ -107,6 +107,24 @@ export default function GuidedTour({ user, pathname, navigate }) {
   const enteredStepsRef = useRef(new Set());
 
   useEffect(() => {
+    if (!active && !welcomeOpen) return undefined;
+    const appRoot = document.getElementById("root");
+    const wasInert = appRoot?.inert ?? false;
+    if (appRoot) appRoot.inert = true;
+
+    const frame = window.requestAnimationFrame(() => {
+      if (active) nextButtonRef.current?.focus({ preventScroll: true });
+      else welcomeRef.current?.querySelector("button:not(:disabled)")?.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (appRoot) appRoot.inert = wasInert;
+      window.requestAnimationFrame(() => launcherRef.current?.focus());
+    };
+  }, [active, welcomeOpen]);
+
+  useEffect(() => {
     if (!user || readTourStatus()) return undefined;
     const timer = window.setTimeout(() => setWelcomeOpen(true), 500);
     return () => window.clearTimeout(timer);
@@ -116,7 +134,6 @@ export default function GuidedTour({ user, pathname, navigate }) {
     saveTourStatus(status);
     setActive(false);
     setSpotlight(null);
-    window.requestAnimationFrame(() => launcherRef.current?.focus());
   }, []);
 
   const startTour = () => {
@@ -131,7 +148,6 @@ export default function GuidedTour({ user, pathname, navigate }) {
   const dismissWelcome = () => {
     saveTourStatus("dismissed");
     setWelcomeOpen(false);
-    window.requestAnimationFrame(() => launcherRef.current?.focus());
   };
 
   useEffect(() => {
