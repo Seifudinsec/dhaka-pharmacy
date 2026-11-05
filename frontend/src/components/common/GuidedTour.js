@@ -170,22 +170,24 @@ export default function GuidedTour({ user, pathname, navigate }) {
     const updateSpotlight = (target) => {
       if (disposed || !target.isConnected) return;
       const rect = target.getBoundingClientRect();
+      const viewportWidth = document.documentElement.clientWidth;
+      const viewportHeight = window.visualViewport?.height || window.innerHeight;
       const width = Math.min(
-        window.innerWidth - 16,
+        viewportWidth - 16,
         rect.width + SPOTLIGHT_PADDING * 2,
       );
       const height = Math.min(
-        window.innerHeight - 16,
+        viewportHeight - 16,
         rect.height + SPOTLIGHT_PADDING * 2,
       );
       const spot = {
         top: Math.max(
           8,
-          Math.min(rect.top - SPOTLIGHT_PADDING, window.innerHeight - height - 8),
+          Math.min(rect.top - SPOTLIGHT_PADDING, viewportHeight - height - 8),
         ),
         left: Math.max(
           8,
-          Math.min(rect.left - SPOTLIGHT_PADDING, window.innerWidth - width - 8),
+          Math.min(rect.left - SPOTLIGHT_PADDING, viewportWidth - width - 8),
         ),
         width,
         height,
@@ -196,11 +198,11 @@ export default function GuidedTour({ user, pathname, navigate }) {
         if (disposed || !cardRef.current) return;
         const cardRect = cardRef.current.getBoundingClientRect();
         const margin = 16;
-        const viewportWidth = document.documentElement.clientWidth;
+        const viewportHeight = window.visualViewport?.height || window.innerHeight;
         const belowTop = spot.top + spot.height + 16;
         const aboveTop = spot.top - cardRect.height - 16;
         const placement =
-          belowTop + cardRect.height <= window.innerHeight - margin
+          belowTop + cardRect.height <= viewportHeight - margin
             ? "below"
             : aboveTop >= margin
               ? "above"
@@ -268,33 +270,39 @@ export default function GuidedTour({ user, pathname, navigate }) {
     };
 
     findTarget();
-    const handleViewportChange = () => {
-      const target = document.querySelector(step.target);
-      if (target) updateSpotlight(target);
-    };
     window.addEventListener("resize", handleViewportChange);
     window.addEventListener("scroll", handleViewportChange, true);
+    window.visualViewport?.addEventListener("resize", handleViewportChange);
+    window.visualViewport?.addEventListener("scroll", handleViewportChange);
 
     return () => {
       disposed = true;
+      resizeObserver?.disconnect();
       window.clearTimeout(timer);
       window.cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", handleViewportChange);
       window.removeEventListener("scroll", handleViewportChange, true);
+      window.visualViewport?.removeEventListener("resize", handleViewportChange);
+      window.visualViewport?.removeEventListener("scroll", handleViewportChange);
     };
   }, [active, finishTour, navigate, pathname, stepIndex, steps]);
 
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active && !welcomeOpen) return undefined;
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        finishTour("dismissed");
+        if (active) {
+          finishTour("dismissed");
+        } else {
+          saveTourStatus("dismissed");
+          setWelcomeOpen(false);
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [active, finishTour]);
+  }, [active, finishTour, welcomeOpen]);
 
   useEffect(() => {
     if (!active && !welcomeOpen) return undefined;
